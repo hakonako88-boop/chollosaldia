@@ -85,7 +85,8 @@ const hostName = (() => {
   }
 })();
 
-const featured = offers.slice(0, 3);
+const imageOffers = offers.filter((o) => o.image);
+const featured = (imageOffers.length ? imageOffers : offers).slice(0, 3);
 const latest = offers.slice(0, 12);
 const categories = [
   'Todo',
@@ -441,5 +442,5 @@ const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 </urlset>`;
 fs.writeFileSync(path.join(outDir, 'sitemap.xml'), sitemap);
 fs.writeFileSync(path.join(outDir, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${baseUrl}/sitemap.xml\n`);
-if (hostName && hostName !== 'chollosaldia.com') fs.writeFileSync(path.join(outDir, 'CNAME'), `${hostName}\n`);
+if (hostName) fs.writeFileSync(path.join(outDir, 'CNAME'), `${hostName}\n`);
 console.log(`Built ${offers.length} offers.`);

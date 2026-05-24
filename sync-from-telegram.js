@@ -43,6 +43,8 @@ for (const u of j.result || []) {
   const text = m.caption || m.text || '';
   const hasPhoto = Array.isArray(m.photo) && m.photo.length > 0;
   if (!text && !hasPhoto) continue;
+  if (/^✅?\s*Publicado\s*$/i.test(text.trim())) continue;
+  if (/^✅?\s*Publicado/i.test(text.trim()) && !hasPhoto) continue;
 
   const photo = (m.photo && m.photo[m.photo.length - 1]?.file_id) || null;
   let image = null;
