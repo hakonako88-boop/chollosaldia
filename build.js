@@ -546,7 +546,7 @@ ${jsonLd}
         <div class="section__head" style="margin-bottom:8px">
           <div>
             <h2>Preguntas rápidas</h2>
-            <p>Texto útil para SEO.</p>
+            <p>Preguntas rápidas sobre la web.</p>
           </div>
         </div>
         <div class="faq">
@@ -561,7 +561,7 @@ ${jsonLd}
 
 <footer class="footer">
   <div class="container">
-    SEO básico listo • imágenes servidas localmente • sincronizable con Telegram • <a href="/sitemap.xml">sitemap</a>
+    Web lista • imágenes servidas localmente • sincronizable con Telegram • <a href="/sitemap.xml">sitemap</a>
     <div style="margin-top:10px;font-size:12px;opacity:.9">En calidad de Afiliado de Amazon, obtengo ingresos por las compras adscritas que cumplen los requisitos aplicables.</div>
   </div>
 </footer>
