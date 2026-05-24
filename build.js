@@ -22,6 +22,16 @@ function escapeHtml(s = '') {
     .replace(/'/g, '&#39;');
 }
 
+function fixText(s = '') {
+  return String(s)
+    .replace(/\?/g, '€')
+    .replace(/�/g, '€')
+    .replace(/c\€psulas/gi, 'cápsulas')
+    .replace(/estanter\€a/gi, 'estantería')
+    .replace(/n\€ivea/gi, 'Nivea')
+    .replace(/lavavajillas?\s+Fairy\s+All\s+in\s+One/gi, 'lavavajillas Fairy All in One');
+}
+
 function slugify(s = '') {
   return String(s)
     .toLowerCase()
@@ -158,18 +168,18 @@ const jsonLd = `
 })}</script>`;
 
 function card(o, featuredCard = false) {
-  const title = escapeHtml(o.title || 'Oferta');
-  const price = escapeHtml(o.price || '');
+  const title = escapeHtml(fixText(o.title || 'Oferta'));
+  const price = escapeHtml(fixText(o.price || ''));
   const detailUrl = escapeHtml(o.detailPath || '#');
   const offerUrl = escapeHtml(o.url || o.detailPath || '#');
   const image = o.image
     ? `<img class="card__img" src="${escapeHtml(o.image)}" alt="${title}" loading="lazy">`
     : `<div class="card__placeholder">Sin imagen</div>`;
-  const desc = escapeHtml(o.description || '').slice(0, 180);
+  const desc = escapeHtml(fixText(o.description || '')).slice(0, 180);
   const store = escapeHtml(o.store || '');
   const category = escapeHtml(o.category || 'General');
   const dateLabel = escapeHtml(o.dateLabel || '');
-  const text = escapeHtml(`${o.title || ''} ${o.description || ''} ${o.store || ''} ${o.category || ''}`);
+  const text = escapeHtml(fixText(`${o.title || ''} ${o.description || ''} ${o.store || ''} ${o.category || ''}`));
   return `
   <article class="card${featuredCard ? ' card--featured' : ''}" data-cat="${escapeHtml(o.categorySlug)}" data-store="${escapeHtml(o.storeSlug)}" data-text="${text}">
     <a class="card__media" href="${detailUrl}">${image}</a>
@@ -249,14 +259,14 @@ function characteristics(o) {
 }
 
 function detailPage(o) {
-  const title = escapeHtml(o.title || 'Oferta');
+  const title = escapeHtml(fixText(o.title || 'Oferta'));
   const image = o.image ? `<img class="detail__img" src="${escapeHtml(o.image)}" alt="${title}">` : '<div class="detail__img detail__placeholder">Sin imagen</div>';
   const buyUrl = escapeHtml(o.url || 'https://t.me/aldiachollos');
   const chars = characteristics(o);
   const pros = summarizePros(o);
   const cons = summarizeCons(o);
   const reasons = summarizeReasons(o);
-  const text = escapeHtml(`${o.title || ''} ${o.description || ''}`.slice(0, 240));
+  const text = escapeHtml(fixText(`${o.title || ''} ${o.description || ''}`.slice(0, 240)));
   return `<!doctype html>
 <html lang="es">
 <head>
