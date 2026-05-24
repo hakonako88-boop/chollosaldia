@@ -137,7 +137,8 @@ const jsonLd = `
 function card(o, featuredCard = false) {
   const title = escapeHtml(o.title || 'Oferta');
   const price = escapeHtml(o.price || '');
-  const url = escapeHtml(o.detailPath || '#');
+  const detailUrl = escapeHtml(o.detailPath || '#');
+  const offerUrl = escapeHtml(o.url || o.detailPath || '#');
   const image = o.image
     ? `<img class="card__img" src="${escapeHtml(o.image)}" alt="${title}" loading="lazy">`
     : `<div class="card__placeholder">Sin imagen</div>`;
@@ -148,17 +149,17 @@ function card(o, featuredCard = false) {
   const text = escapeHtml(`${o.title || ''} ${o.description || ''} ${o.store || ''} ${o.category || ''}`);
   return `
   <article class="card${featuredCard ? ' card--featured' : ''}" data-cat="${escapeHtml(o.categorySlug)}" data-store="${escapeHtml(o.storeSlug)}" data-text="${text}">
-    <a class="card__media" href="${url}" target="_blank" rel="noreferrer">${image}</a>
+    <a class="card__media" href="${detailUrl}">${image}</a>
     <div class="card__body">
       <div class="card__meta">
         <span>${store}</span>
-        <span>${category}</span>
+        ${o.category !== o.store ? `<span>${category}</span>` : ''}
         ${dateLabel ? `<span>${dateLabel}</span>` : ''}
       </div>
-      <h2 class="card__title"><a href="${url}" target="_blank" rel="noreferrer">${title}</a></h2>
+      <h2 class="card__title"><a href="${detailUrl}">${title}</a></h2>
       <div class="card__price">${price}</div>
       <p class="card__desc">${desc}</p>
-      <a class="btn" href="${url}">Ver oferta</a>
+      <a class="btn" href="${offerUrl}" target="_blank" rel="noreferrer">Ver oferta</a>
     </div>
   </article>`;
 }
@@ -274,13 +275,13 @@ function detailPage(o) {
         <div class="body">
           <div class="meta">
             <span>${escapeHtml(o.store || 'Oferta')}</span>
-            <span>${escapeHtml(o.category || 'General')}</span>
+            ${o.category !== o.store ? `<span>${escapeHtml(o.category || 'General')}</span>` : ''}
             ${o.dateLabel ? `<span>${escapeHtml(o.dateLabel)}</span>` : ''}
           </div>
           <h1>${title}</h1>
           <div class="price">${escapeHtml(o.price || '')}</div>
           <div class="box"><h2>Descripción</h2><p style="margin:0;color:#99abc5;line-height:1.7">${escapeHtml(o.description || 'Sin descripción adicional.')}</p></div>
-          <a class="buy" href="${buyUrl}" target="_blank" rel="noreferrer">Comprar / Ver oferta</a>
+          <a class="buy" href="${buyUrl}" target="_blank" rel="noreferrer">Ver oferta original</a>
         </div>
       </article>
       <div>
@@ -581,6 +582,7 @@ ${jsonLd}
 </body>
 </html>`;
 
+fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
 copyDir(path.join(publicDir, 'tg'), path.join(outDir, 'tg'));
 fs.writeFileSync(path.join(outDir, 'index.html'), html);
