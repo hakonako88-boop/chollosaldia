@@ -1,18 +1,23 @@
 import fs from 'fs';
 import path from 'path';
 
-const envFile = path.resolve('.env');
-const env = fs.existsSync(envFile)
-  ? Object.fromEntries(
-      fs.readFileSync(envFile, 'utf8')
-        .split(/\r?\n/)
-        .filter(Boolean)
-        .map(line => line.split('='))
-    )
-  : {};
+function readEnvFile(file) {
+  if (!fs.existsSync(file)) return {};
+  return Object.fromEntries(
+    fs.readFileSync(file, 'utf8')
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map(line => line.split('='))
+  );
+}
+
+const env = {
+  ...readEnvFile(path.resolve('.env')),
+  ...readEnvFile(path.resolve('..', '.env')),
+};
 
 const token = process.env.TELEGRAM_BOT_TOKEN || env.TELEGRAM_BOT_TOKEN;
-const channelId = process.env.TELEGRAM_CHANNEL_ID || env.TELEGRAM_CHANNEL_ID || '-1002549368004';
+const channelId = process.env.TELEGRAM_CHANNEL_ID || env.TELEGRAM_CHANNEL_ID || env.TELEGRAM_CHAT_ID || '-1002549368004';
 const out = path.resolve('data', 'offers.json');
 const imgDir = path.resolve('public', 'tg');
 
@@ -26,9 +31,18 @@ if (!j.ok) throw new Error(JSON.stringify(j));
 const offers = [];
 for (const u of j.result || []) {
   const m = u.channel_post || u.edited_channel_post;
-  if (!m || String(m.chat?.id) !== String(channelId)) continue;
+  if (!m) continue;
+  const chatId = String(m.chat?.id || '');
+  const chatUser = String(m.chat?.username || '').toLowerCase();
+  const wanted = String(channelId).trim().toLowerCase();
+  const matchesChannel =
+    wanted.startsWith('@')
+      ? chatUser === wanted.slice(1)
+      : chatId === wanted;
+  if (!matchesChannel) continue;
   const text = m.caption || m.text || '';
-  if (!/OFERTÓN|OFERTA|Chollo|Amazon|AliExpress/i.test(text)) continue;
+  const hasPhoto = Array.isArray(m.photo) && m.photo.length > 0;
+  if (!text && !hasPhoto) continue;
 
   const photo = (m.photo && m.photo[m.photo.length - 1]?.file_id) || null;
   let image = null;
