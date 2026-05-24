@@ -65,7 +65,30 @@ function copyDir(src, dst) {
 }
 
 const rawOffers = readJson(path.join(dataDir, 'offers.json'), []);
-const offers = rawOffers.slice().reverse().map((o) => {
+
+function isBrokenOffer(o = {}) {
+  const text = `${o.title || ''} ${o.description || ''} ${o.text || ''}`.toLowerCase();
+  return (
+    !o.message_id ||
+    /^la imagen es un/i.test(String(o.title || '')) ||
+    /^resumen del mensaje/i.test(String(o.title || '')) ||
+    /^si quieres, también puedo/i.test(text) ||
+    /^si quieres, tambien puedo/i.test(text) ||
+    /transcribir el texto exacto/i.test(text) ||
+    /redactarlo con tono más persuasivo/i.test(text) ||
+    /redactarlo con tono mas persuasivo/i.test(text)
+  );
+}
+
+const offers = Array.from(
+  new Map(
+    rawOffers
+      .slice()
+      .sort((a, b) => (b.date || 0) - (a.date || 0))
+      .filter((o) => !isBrokenOffer(o))
+      .map((o) => [String(o.message_id), o])
+  ).values()
+).map((o) => {
   const category = inferCategory(`${o.title || ''} ${o.description || ''}`, o.store || '');
   const slug = slugify(o.title || o.description || `${o.store || 'oferta'}-${o.message_id || ''}`);
   return {

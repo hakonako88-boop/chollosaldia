@@ -45,6 +45,9 @@ for (const u of j.result || []) {
   if (!text && !hasPhoto) continue;
   if (/^✅?\s*Publicado\s*$/i.test(text.trim())) continue;
   if (/^✅?\s*Publicado/i.test(text.trim()) && !hasPhoto) continue;
+  if (/^la imagen es un/i.test(text.trim())) continue;
+  if (/^si quieres, también puedo/i.test(text.trim())) continue;
+  if (/^si quieres, tambien puedo/i.test(text.trim())) continue;
 
   const photo = (m.photo && m.photo[m.photo.length - 1]?.file_id) || null;
   let image = null;
@@ -75,9 +78,13 @@ for (const u of j.result || []) {
     description: text.replace(/\s+/g, ' ').slice(0, 200),
   });
 }
+
+const deduped = Array.from(
+  new Map(offers.map((o) => [String(o.message_id), o])).values()
+).filter((o) => o.title || o.image);
 fs.mkdirSync(path.dirname(out), { recursive: true });
-fs.writeFileSync(out, JSON.stringify(offers, null, 2));
-console.log(`Synced ${offers.length} offers`);
+fs.writeFileSync(out, JSON.stringify(deduped, null, 2));
+console.log(`Synced ${deduped.length} offers`);
 
 function extractUrl(text) { return (text.match(/https?:\/\/[^\s)]+/g) || [])[0] || ''; }
 function firstLine(text) { return (text.split(/\r?\n/).find(Boolean) || 'Oferta').slice(0, 120); }
