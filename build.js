@@ -450,7 +450,7 @@ ${jsonLd}
   <div class="container topbar__inner">
     <a class="brand" href="${baseUrl}">
       <div class="brand__mark">C</div>
-      <div class="brand__text"><strong>Chollos al Día</strong><span>Ofertas reales desde Telegram</span></div>
+      <div class="brand__text"><strong>Chollos al Día</strong><span>Ofertas y chollos</span></div>
     </a>
     <div class="topbar__actions">
       <a class="pill" href="https://t.me/aldiachollos" target="_blank" rel="noreferrer">Telegram</a>
