@@ -67,12 +67,15 @@ function copyDir(src, dst) {
 const rawOffers = readJson(path.join(dataDir, 'offers.json'), []);
 const offers = rawOffers.slice().reverse().map((o) => {
   const category = inferCategory(`${o.title || ''} ${o.description || ''}`, o.store || '');
+  const slug = slugify(o.title || o.description || `${o.store || 'oferta'}-${o.message_id || ''}`);
   return {
     ...o,
     category,
     categorySlug: slugify(category),
     storeSlug: slugify(o.store || 'General'),
     dateLabel: formatDate(o.date),
+    slug,
+    detailPath: `/oferta/${slug}/`,
   };
 });
 
@@ -134,7 +137,7 @@ const jsonLd = `
 function card(o, featuredCard = false) {
   const title = escapeHtml(o.title || 'Oferta');
   const price = escapeHtml(o.price || '');
-  const url = escapeHtml(o.url || '#');
+  const url = escapeHtml(o.detailPath || '#');
   const image = o.image
     ? `<img class="card__img" src="${escapeHtml(o.image)}" alt="${title}" loading="lazy">`
     : `<div class="card__placeholder">Sin imagen</div>`;
@@ -155,9 +158,154 @@ function card(o, featuredCard = false) {
       <h2 class="card__title"><a href="${url}" target="_blank" rel="noreferrer">${title}</a></h2>
       <div class="card__price">${price}</div>
       <p class="card__desc">${desc}</p>
-      <a class="btn" href="${url}" target="_blank" rel="noreferrer">Ver oferta</a>
+      <a class="btn" href="${url}">Ver oferta</a>
     </div>
   </article>`;
+}
+
+function splitSentences(text = '') {
+  return String(text)
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function summarizePros(o) {
+  const text = `${o.title || ''} ${o.description || ''}`.toLowerCase();
+  const pros = [];
+  if (/amazon/i.test(text)) pros.push('Envío y compra sencilla desde Amazon.');
+  if (/aliexpress/i.test(text)) pros.push('Precio agresivo y posibilidad de cupones.');
+  if (/wifi|wi-fi|wifi integrado/i.test(text)) pros.push('Conectividad inteligente para usarlo mejor.');
+  if (/4k|qled|oled|hdr|144 hz|120 hz|ips|amoled/i.test(text)) pros.push('Especificaciones potentes para su categoría.');
+  if (/nfc|gps|bluetooth|usb-c|inverter|brushless/i.test(text)) pros.push('Incluye extras útiles que mejoran la experiencia.');
+  if (/ofertón|chollo|descuento|oferta/i.test(text)) pros.push('Precio de entrada atractivo para comprar hoy.');
+  if (o.image) pros.push('La foto original ayuda a ver el producto real.');
+  return pros.slice(0, 4);
+}
+
+function summarizeCons(o) {
+  const text = `${o.title || ''} ${o.description || ''}`.toLowerCase();
+  const cons = [];
+  if (!o.url) cons.push('No tenemos aún enlace de compra directo.');
+  if (/amazon/i.test(text) && !/prime/i.test(text)) cons.push('Puede variar el precio según stock.');
+  if (/aliexpress/i.test(text)) cons.push('El envío puede ser más lento que en tiendas locales.');
+  if (/tv|monitor|portátil|hogar|aire acondicionado/i.test(text)) cons.push('Conviene comparar medidas y modelo exacto antes de comprar.');
+  if (cons.length === 0) cons.push('Revisar bien el precio final y el envío antes de pagar.');
+  return cons.slice(0, 3);
+}
+
+function summarizeReasons(o) {
+  const text = `${o.title || ''} ${o.description || ''}`.toLowerCase();
+  const reasons = [];
+  if (/monitor|tv|portátil|pc|gaming/i.test(text)) reasons.push('Merece la pena si buscas mejorar tu setup o renovar equipo.');
+  if (/hogar|freidora|aspirador|aire acondicionado|cocina/i.test(text)) reasons.push('Es buena compra si quieres ahorrar tiempo y comodidad en casa.');
+  if (/móvil|smartphone|reloj|watch|wearable/i.test(text)) reasons.push('Interesa si quieres un dispositivo actualizado sin pagar precio de lanzamiento.');
+  if (/amazon/i.test(text)) reasons.push('Amazon suele dar más confianza por devolución y entrega.');
+  if (/aliexpress/i.test(text)) reasons.push('AliExpress puede salir muy bien si aplicas cupón y revisas el vendedor.');
+  if (reasons.length === 0) reasons.push('Es una oportunidad razonable si el precio actual está por debajo de lo normal.');
+  return reasons.slice(0, 3);
+}
+
+function characteristics(o) {
+  const pieces = [];
+  const text = `${o.title || ''} ${o.description || ''}`;
+  const price = o.price ? `Precio detectado: ${o.price}` : '';
+  if (price) pieces.push(price);
+  if (o.category) pieces.push(`Categoría: ${o.category}`);
+  if (o.store) pieces.push(`Tienda: ${o.store}`);
+  if (/wifi|wi-fi/i.test(text)) pieces.push('Con Wi‑Fi / conectividad smart');
+  if (/nfc/i.test(text)) pieces.push('Pagos o funciones NFC');
+  if (/gps/i.test(text)) pieces.push('Incluye GPS');
+  if (/4k|qled|oled/i.test(text)) pieces.push('Pantalla o panel de alta gama');
+  if (/144 hz|120 hz|90 hz/i.test(text)) pieces.push('Alta tasa de refresco');
+  if (/usb-c/i.test(text)) pieces.push('Carga o conexión USB‑C');
+  if (/inverter/i.test(text)) pieces.push('Tecnología Inverter');
+  return pieces.slice(0, 6);
+}
+
+function detailPage(o) {
+  const title = escapeHtml(o.title || 'Oferta');
+  const image = o.image ? `<img class="detail__img" src="${escapeHtml(o.image)}" alt="${title}">` : '<div class="detail__img detail__placeholder">Sin imagen</div>';
+  const buyUrl = escapeHtml(o.url || 'https://t.me/aldiachollos');
+  const chars = characteristics(o);
+  const pros = summarizePros(o);
+  const cons = summarizeCons(o);
+  const reasons = summarizeReasons(o);
+  const text = escapeHtml(`${o.title || ''} ${o.description || ''}`.slice(0, 240));
+  return `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${title} | Chollos al Día</title>
+  <meta name="description" content="${text}" />
+  <link rel="canonical" href="${baseUrl}${o.detailPath}" />
+  <style>
+    body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:linear-gradient(180deg,#07111d,#0d1726);color:#e9f2ff}
+    a{color:inherit;text-decoration:none}
+    .wrap{max-width:1040px;margin:0 auto;padding:24px}
+    .top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:20px}
+    .pill{display:inline-block;padding:10px 14px;border:1px solid #20314c;border-radius:14px;background:rgba(255,255,255,.04)}
+    .grid{display:grid;grid-template-columns:1.05fr .95fr;gap:18px}
+    .card{background:#0f1a2d;border:1px solid #20314c;border-radius:24px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.26)}
+    .detail__img,.detail__placeholder{width:100%;min-height:360px;object-fit:cover;background:#101c31;display:grid;place-items:center;color:#99abc5}
+    .body{padding:22px}
+    h1{margin:0 0 10px;font-size:clamp(30px,4vw,48px);line-height:1}
+    .meta{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}
+    .meta span{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#a9b9d0;background:rgba(255,255,255,.05);border:1px solid #20314c;padding:6px 8px;border-radius:999px}
+    .price{font-size:34px;font-weight:900;color:#ffb000;margin:8px 0 18px}
+    .box{background:rgba(255,255,255,.03);border:1px solid #20314c;border-radius:20px;padding:18px;margin-bottom:14px}
+    .box h2{margin:0 0 10px;font-size:18px}
+    ul{margin:0;padding-left:18px;color:#99abc5;line-height:1.7}
+    .buy{display:inline-block;margin-top:12px;padding:14px 18px;border-radius:14px;background:linear-gradient(135deg,#ffb000,#ff8a00);color:#111;font-weight:900}
+    @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <a class="pill" href="${baseUrl}">← Volver</a>
+      <a class="pill" href="https://t.me/aldiachollos" target="_blank" rel="noreferrer">Telegram</a>
+    </div>
+    <div class="grid">
+      <article class="card">
+        ${image}
+        <div class="body">
+          <div class="meta">
+            <span>${escapeHtml(o.store || 'Oferta')}</span>
+            <span>${escapeHtml(o.category || 'General')}</span>
+            ${o.dateLabel ? `<span>${escapeHtml(o.dateLabel)}</span>` : ''}
+          </div>
+          <h1>${title}</h1>
+          <div class="price">${escapeHtml(o.price || '')}</div>
+          <div class="box"><h2>Descripción</h2><p style="margin:0;color:#99abc5;line-height:1.7">${escapeHtml(o.description || 'Sin descripción adicional.')}</p></div>
+          <a class="buy" href="${buyUrl}" target="_blank" rel="noreferrer">Comprar / Ver oferta</a>
+        </div>
+      </article>
+      <div>
+        <div class="box">
+          <h2>Características</h2>
+          <ul>${chars.length ? chars.map((x) => `<li>${escapeHtml(x)}</li>`).join('') : '<li>Sin datos suficientes, revisa la oferta original.</li>'}</ul>
+        </div>
+        <div class="box">
+          <h2>Pros</h2>
+          <ul>${pros.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>
+        </div>
+        <div class="box">
+          <h2>Contras</h2>
+          <ul>${cons.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>
+        </div>
+        <div class="box">
+          <h2>Por qué merece la pena</h2>
+          <ul>${reasons.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:18px;font-size:12px;color:#99abc5;opacity:.9">En calidad de Afiliado de Amazon, obtengo ingresos por las compras adscritas que cumplen los requisitos aplicables.</div>
+  </div>
+</body>
+</html>`;
 }
 
 const html = `<!doctype html>
@@ -380,6 +528,7 @@ ${jsonLd}
 <footer class="footer">
   <div class="container">
     SEO básico listo • imágenes servidas localmente • sincronizable con Telegram • <a href="/sitemap.xml">sitemap</a>
+    <div style="margin-top:10px;font-size:12px;opacity:.9">En calidad de Afiliado de Amazon, obtengo ingresos por las compras adscritas que cumplen los requisitos aplicables.</div>
   </div>
 </footer>
 
@@ -435,6 +584,11 @@ ${jsonLd}
 fs.mkdirSync(outDir, { recursive: true });
 copyDir(path.join(publicDir, 'tg'), path.join(outDir, 'tg'));
 fs.writeFileSync(path.join(outDir, 'index.html'), html);
+for (const offer of offers) {
+  const pagePath = path.join(outDir, 'oferta', offer.slug, 'index.html');
+  fs.mkdirSync(path.dirname(pagePath), { recursive: true });
+  fs.writeFileSync(pagePath, detailPage(offer));
+}
 fs.writeFileSync(path.join(outDir, '.nojekyll'), '');
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
