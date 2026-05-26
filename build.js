@@ -24,7 +24,7 @@ function escapeHtml(s = '') {
 
 function fixText(s = '') {
   return String(s)
-    .replace(/\?/g, '€')
+    .replace(/(\d[\d.,]*)[?�]/g, '$1€')
     .replace(/�/g, '€')
     .replace(/c\€psulas/gi, 'cápsulas')
     .replace(/estanter\€a/gi, 'estantería')
@@ -74,6 +74,64 @@ function copyDir(src, dst) {
   }
 }
 
+function makeAbsoluteUrl(base, maybeUrl = '') {
+  const url = String(maybeUrl || '').trim();
+  if (!url) return base;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('/')) return `${base}${url}`;
+  return `${base}/${url}`;
+}
+
+const appLinkHosts = new Set(['amzn.to', 's.click.aliexpress.com', 'a.aliexpress.com']);
+const urlCache = new Map();
+
+function appIntentForUrl(rawUrl = '') {
+  const input = String(rawUrl || '').trim();
+  if (!input || !/^https?:\/\//i.test(input)) return input;
+
+  let parsed;
+  try {
+    parsed = new URL(input);
+  } catch {
+    return input;
+  }
+
+  const host = parsed.hostname.replace(/^www\./i, '').toLowerCase();
+  let packageName = '';
+  if (host === 'amzn.to' || host.endsWith('amazon.es') || host.endsWith('amazon.com')) packageName = 'com.amazon.mShop.android.shopping';
+  if (host === 's.click.aliexpress.com' || host === 'a.aliexpress.com' || host.endsWith('aliexpress.com')) packageName = 'com.alibaba.aliexpresshd';
+  if (!packageName) return input;
+
+  const fallback = encodeURIComponent(input);
+  const intentTarget = `${parsed.host}${parsed.pathname}${parsed.search}`;
+  return `intent://${intentTarget}#Intent;scheme=https;package=${packageName};S.browser_fallback_url=${fallback};end`;
+}
+
+async function resolveOfferUrl(rawUrl = '') {
+  const input = String(rawUrl || '').trim();
+  if (!input || !/^https?:\/\//i.test(input)) return input;
+
+  let host = '';
+  try {
+    host = new URL(input).hostname.replace(/^www\./i, '').toLowerCase();
+  } catch {
+    return input;
+  }
+
+  if (!appLinkHosts.has(host)) return input;
+  if (urlCache.has(input)) return urlCache.get(input);
+
+  try {
+    const response = await fetch(input, { method: 'GET', redirect: 'follow' });
+    const resolved = response.url || input;
+    urlCache.set(input, resolved);
+    return resolved;
+  } catch {
+    urlCache.set(input, input);
+    return input;
+  }
+}
+
 const rawOffers = readJson(path.join(dataDir, 'offers.json'), []);
 
 function isBrokenOffer(o = {}) {
@@ -112,6 +170,14 @@ const offers = Array.from(
   };
 });
 
+await Promise.all(
+  offers.map(async (offer) => {
+    const resolved = await resolveOfferUrl(offer.url);
+    offer.url = appIntentForUrl(resolved);
+    return offer;
+  })
+);
+
 const baseUrl = (process.env.SITE_URL || 'https://chollosaldia.com').replace(/\/$/, '');
 const hostName = (() => {
   try {
@@ -124,11 +190,13 @@ const hostName = (() => {
 const imageOffers = offers.filter((o) => o.image);
 const featured = (imageOffers.length ? imageOffers : offers).slice(0, 3);
 const latest = offers.slice(0, 12);
-const categories = [
-  'Todo',
-  ...new Set(offers.map((o) => o.category)),
-  ...new Set(offers.map((o) => o.store).filter(Boolean)),
-].filter(Boolean);
+const categories = Array.from(
+  new Set([
+    'Todo',
+    ...offers.map((o) => o.category).filter(Boolean),
+    ...offers.map((o) => o.store).filter(Boolean),
+  ])
+);
 
 const stats = {
   offers: offers.length,
@@ -139,7 +207,7 @@ const stats = {
 const latestJsonLd = offers.slice(0, 10).map((o, idx) => ({
   '@type': 'ListItem',
   position: idx + 1,
-  url: `${baseUrl}${o.url || ''}`,
+  url: makeAbsoluteUrl(baseUrl, o.detailPath || o.url || ''),
   name: o.title || 'Oferta',
 }));
 
@@ -261,7 +329,7 @@ function characteristics(o) {
 function detailPage(o) {
   const title = escapeHtml(fixText(o.title || 'Oferta'));
   const image = o.image ? `<img class="detail__img" src="${escapeHtml(o.image)}" alt="${title}">` : '<div class="detail__img detail__placeholder">Sin imagen</div>';
-  const buyUrl = escapeHtml(o.url || 'https://t.me/aldiachollos');
+  const buyUrl = escapeHtml(appIntentForUrl(o.url || 'https://t.me/aldiachollos'));
   const chars = characteristics(o);
   const pros = summarizePros(o);
   const cons = summarizeCons(o);

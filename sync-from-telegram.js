@@ -7,8 +7,39 @@ function readEnvFile(file) {
     fs.readFileSync(file, 'utf8')
       .split(/\r?\n/)
       .filter(Boolean)
-      .map(line => line.split('='))
+      .map((line) => line.split('='))
   );
+}
+
+function normalizeText(s = '') {
+  return String(s)
+    .replace(/\u0000/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\uFFFD/g, '€')
+    .replace(/�/g, '€');
+}
+
+function extractUrl(text) {
+  return (String(text).match(/https?:\/\/[^\s)]+/g) || [])[0] || '';
+}
+
+function extractButtonUrl(message = {}) {
+  const rows = message.reply_markup?.inline_keyboard || [];
+  for (const row of rows) {
+    for (const btn of row || []) {
+      if (btn?.url && /^https?:\/\//i.test(btn.url)) return btn.url;
+    }
+  }
+  return '';
+}
+
+function firstLine(text) {
+  return (String(text).split(/\r?\n/).find(Boolean) || 'Oferta').slice(0, 120);
+}
+
+function extractPrice(text) {
+  const m = String(text).match(/([0-9]+,[0-9]{2}|[0-9]+\.[0-9]{2}|[0-9]+)/);
+  return m ? `${m[1]}€` : '';
 }
 
 const env = {
@@ -32,34 +63,40 @@ const offers = [];
 for (const u of j.result || []) {
   const m = u.channel_post || u.edited_channel_post;
   if (!m) continue;
+
   const chatId = String(m.chat?.id || '');
   const chatUser = String(m.chat?.username || '').toLowerCase();
   const wanted = String(channelId).trim().toLowerCase();
-  const matchesChannel =
-    wanted.startsWith('@')
-      ? chatUser === wanted.slice(1)
-      : chatId === wanted;
+  const matchesChannel = wanted.startsWith('@')
+    ? chatUser === wanted.slice(1)
+    : chatId === wanted;
   if (!matchesChannel) continue;
-  const text = m.caption || m.text || '';
+
+  const text = normalizeText(m.caption || m.text || '');
   const hasPhoto = Array.isArray(m.photo) && m.photo.length > 0;
   if (!text && !hasPhoto) continue;
-  if (/^✅?\s*Publicado\s*$/i.test(text.trim())) continue;
-  if (/^✅?\s*Publicado/i.test(text.trim()) && !hasPhoto) continue;
-  if (/^la imagen es un/i.test(text.trim())) continue;
-  if (/^si quieres, también puedo/i.test(text.trim())) continue;
-  if (/^si quieres, tambien puedo/i.test(text.trim())) continue;
+
+  // Deleted/bad Telegram posts can remain in getUpdates history; never import them.
+  if ([3558, 3568, 3570].includes(m.message_id)) continue;
+
+  const trimmed = text.trim();
+  if (/publicado/i.test(trimmed)) continue;
+  if (/^la imagen es un/i.test(trimmed)) continue;
+  if (/^si quieres, también puedo/i.test(trimmed)) continue;
+  if (/^si quieres, tambien puedo/i.test(trimmed)) continue;
+  if (/^🛒\s*🔥\s*ofertón amazon\s*🔥\s*logitech g g305 lightspeed/i.test(trimmed)) continue;
 
   const photo = (m.photo && m.photo[m.photo.length - 1]?.file_id) || null;
   let image = null;
   if (photo) {
-    const file = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${photo}`).then(r => r.json());
+    const file = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${photo}`).then((r) => r.json());
     if (file.ok && file.result?.file_path) {
       const imgUrl = `https://api.telegram.org/file/bot${token}/${file.result.file_path}`;
       const ext = path.extname(file.result.file_path) || '.jpg';
       const localName = `${m.message_id}${ext}`;
       const localPath = path.join(imgDir, localName);
       if (!fs.existsSync(localPath)) {
-        const buf = Buffer.from(await fetch(imgUrl).then(r => r.arrayBuffer()));
+        const buf = Buffer.from(await fetch(imgUrl).then((r) => r.arrayBuffer()));
         fs.writeFileSync(localPath, buf);
       }
       image = `/tg/${localName}`;
@@ -71,7 +108,7 @@ for (const u of j.result || []) {
     date: m.date,
     text,
     image,
-    url: extractUrl(text),
+    url: extractUrl(text) || extractButtonUrl(m),
     title: firstLine(text),
     price: extractPrice(text),
     store: /AliExpress/i.test(text) ? 'AliExpress' : 'Amazon',
@@ -82,10 +119,7 @@ for (const u of j.result || []) {
 const deduped = Array.from(
   new Map(offers.map((o) => [String(o.message_id), o])).values()
 ).filter((o) => o.title || o.image);
+
 fs.mkdirSync(path.dirname(out), { recursive: true });
 fs.writeFileSync(out, JSON.stringify(deduped, null, 2));
 console.log(`Synced ${deduped.length} offers`);
-
-function extractUrl(text) { return (text.match(/https?:\/\/[^\s)]+/g) || [])[0] || ''; }
-function firstLine(text) { return (text.split(/\r?\n/).find(Boolean) || 'Oferta').slice(0, 120); }
-function extractPrice(text) { return (text.match(/([0-9]+,[0-9]{2}|[0-9]+\.[0-9]{2}|[0-9]+)€/) || [,''])[1] ? `${(text.match(/([0-9]+,[0-9]{2}|[0-9]+\.[0-9]{2}|[0-9]+)€/) || [,''])[1]}€` : ''; }
