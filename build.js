@@ -4,22 +4,16 @@ import path from 'path';
 const dataDir = path.resolve('data');
 const outDir = path.resolve('dist');
 const publicDir = path.resolve('public');
+const baseUrl = (process.env.SITE_URL || 'https://chollosaldia.com').replace(/\/$/, '');
+const telegramUrl = 'https://t.me/aldiachollos';
+const brand = 'Chollos al Día';
 
 function readJson(file, fallback) {
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return fallback;
-  }
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
 }
 
 function escapeHtml(s = '') {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function fixText(s = '') {
@@ -33,88 +27,92 @@ function fixText(s = '') {
 }
 
 function stripMediaLines(s = '') {
-  return String(s)
-    .split(/\r?\n/)
-    .filter((line) => {
-      const t = line.trim();
-      return t && !/^media:media:\/\//i.test(t) && !/^media:\/\//i.test(t);
-    })
-    .join('\n');
+  return String(s).split(/\r?\n/).filter((line) => {
+    const t = line.trim();
+    return t && !/^media:media:\/\//i.test(t) && !/^media:\/\//i.test(t) && !/^MEDIA:/i.test(t);
+  }).join('\n');
 }
 
 function normalizeBodyText(s = '') {
-  return stripMediaLines(fixText(s))
+  return stripMediaLines(fixText(s)).replace(/\s+/g, ' ').trim();
+}
+
+function cleanTitle(s = '') {
+  return normalizeBodyText(s)
+    .replace(/^🛒\s*/u, '')
+    .replace(/^OFERT[ÓO]N\s+(AMAZON|ALIEXPRESS)?\s*/i, '')
+    .replace(/^🔥\s*/u, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
+function slugify(s = '') {
+  return String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'oferta';
+}
+
+function parseEuro(value = '') {
+  const m = String(value).match(/(\d{1,5}(?:[.,]\d{1,2})?)/);
+  return m ? Number(m[1].replace('.', '').replace(',', '.')) : 0;
+}
+
+function euro(n) {
+  return Number(n).toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '€';
+}
+
 function extractPriceFromText(s = '') {
   const text = String(s);
-  const labeled = text.match(/(?:precio(?:\s+con\s+cup[oó]n)?|precio oferta|precio final|precio)\D{0,40}(\d{1,4}(?:[.,]\d{2})?)\s*€/i);
+  const labeled = text.match(/(?:precio(?:\s+con\s+cup[oó]n)?|precio oferta|precio final|precio)\D{0,45}(\d{1,4}(?:[.,]\d{2})?)\s*€/i);
   if (labeled) return `${labeled[1].replace('.', ',')}€`;
   const plain = text.match(/(\d{1,4}(?:[.,]\d{2})?)\s*€/);
   return plain ? `${plain[1].replace('.', ',')}€` : '';
 }
 
-function deriveTitle(o = {}) {
-  const candidates = [o.text, o.description, o.title]
-    .map((v) => normalizeBodyText(v || ''))
-    .filter(Boolean);
-  for (const candidate of candidates) {
-    const line = candidate.split(/\n/).map((x) => x.trim()).find(Boolean) || '';
-    if (!/^media:/i.test(line) && line.length > 3) return line.slice(0, 120);
-  }
-  return normalizeBodyText(o.title || o.description || o.text || 'Oferta').slice(0, 120) || 'Oferta';
+function extractPrevious(text = '', description = '') {
+  const t = `${text} ${description}`;
+  const m = t.match(/(?:antes|precio anterior|pvp|precio habitual)\D{0,40}(\d{1,5}(?:[.,]\d{2})?)\s*€/i);
+  return m ? `${m[1].replace('.', ',')}€` : '';
 }
 
-function slugify(s = '') {
-  return String(s)
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'general';
+function discountPct(price = '', previous = '') {
+  const p = parseEuro(price), old = parseEuro(previous);
+  if (!p || !old || old <= p) return '';
+  return `-${Math.round(((old - p) / old) * 100)}%`;
 }
 
 function inferCategory(text = '', store = '') {
   const t = `${store} ${text}`.toLowerCase();
-  if (/(tv|televisor|smart tv|qled|oled|mini led|qd-mini|hdr)/i.test(t)) return 'TV';
-  if (/(auricular|headphone|soundbar|altavoz|speaker|audio)/i.test(t)) return 'Audio';
-  if (/(móvil|movil|smartphone|xiaomi|redmi|poco|samsung|oneplus|pixel|iphone|oppo|realme)/i.test(t)) return 'Móviles';
-  if (/(portátil|portatil|monitor|teclado|ratón|raton|pc|ordenador|mini pc|impresora|raton gaming)/i.test(t)) return 'PC';
-  if (/(reloj|watch|wearable|pulsera|gps|nfc|smartwatch)/i.test(t)) return 'Wearables';
-  if (/(freidora|aspirador|hogar|robot|cocina|secador|aire acondicionado|lavadora|nevera|maleta|camping)/i.test(t)) return 'Hogar';
-  if (/(gaming|xbox|playstation|switch|videoconsola|ps5|juego|mandos|ratón gaming|raton gaming)/i.test(t)) return 'Gaming';
-  if (/amazon/i.test(t)) return 'Amazon';
-  if (/aliexpress/i.test(t)) return 'AliExpress';
-  return 'General';
+  if (/(móvil|movil|smartphone|xiaomi|redmi|poco|samsung|oneplus|pixel|iphone|oppo|realme|teclado|ratón|raton|monitor|portátil|portatil|pc|gaming|xbox|playstation|switch|auricular|bluetooth|usb|pilas|bater[ií]a)/i.test(t)) return 'Tecnología';
+  if (/(freidora|aspirador|hogar|robot|cocina|secador|aire acondicionado|lavadora|nevera|maleta|vileda|fregona|diana|mueble)/i.test(t)) return 'Hogar';
+  if (/(taladro|herramienta|bricolaje|atornillador|llave|broca)/i.test(t)) return 'Herramientas';
+  if (/(zapatilla|camiseta|chaqueta|moda|ropa|zapato|pantal[oó]n)/i.test(t)) return 'Moda';
+  if (/(deporte|fitness|bicicleta|camping|senderismo|dardos)/i.test(t)) return 'Deportes';
+  if (/(supermercado|caf[eé]|lomo|comida|alimentaci[oó]n|cápsulas|capsulas)/i.test(t)) return 'Supermercado';
+  if (/(beb[eé]|niños|ninos|juguete|bugaboo|carrito)/i.test(t)) return 'Niños y bebés';
+  if (/(coche|moto|carplay|aceite|neum[aá]tico)/i.test(t)) return 'Coche y moto';
+  if (/amazon/i.test(t)) return 'Ofertas Amazon';
+  if (/aliexpress/i.test(t)) return 'Ofertas AliExpress';
+  return 'Chollos destacados';
+}
+
+function timeAgo(ts) {
+  if (!ts) return 'Publicado recientemente';
+  const diff = Math.max(1, Math.floor((Date.now() - ts * 1000) / 1000));
+  if (diff < 3600) return `Hace ${Math.floor(diff / 60) || 1} min`;
+  if (diff < 86400) return `Hace ${Math.floor(diff / 3600)} h`;
+  return `Hace ${Math.floor(diff / 86400)} días`;
 }
 
 function formatDate(ts) {
-  try {
-    return new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium' }).format(new Date(ts * 1000));
-  } catch {
-    return '';
-  }
+  try { return new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium' }).format(new Date(ts * 1000)); } catch { return ''; }
 }
 
 function copyDir(src, dst) {
   if (!fs.existsSync(src)) return;
   fs.mkdirSync(dst, { recursive: true });
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    const s = path.join(src, entry.name);
-    const d = path.join(dst, entry.name);
-    if (entry.isDirectory()) copyDir(s, d);
-    else fs.copyFileSync(s, d);
+    const s = path.join(src, entry.name), d = path.join(dst, entry.name);
+    if (entry.isDirectory()) copyDir(s, d); else fs.copyFileSync(s, d);
   }
-}
-
-function makeAbsoluteUrl(base, maybeUrl = '') {
-  const url = String(maybeUrl || '').trim();
-  if (!url) return base;
-  if (/^https?:\/\//i.test(url)) return url;
-  if (url.startsWith('/')) return `${base}${url}`;
-  return `${base}/${url}`;
 }
 
 const appLinkHosts = new Set(['amzn.to', 's.click.aliexpress.com', 'a.aliexpress.com']);
@@ -123,39 +121,23 @@ const urlCache = new Map();
 function appIntentForUrl(rawUrl = '') {
   const input = String(rawUrl || '').trim();
   if (!input || !/^https?:\/\//i.test(input)) return input;
-
   let parsed;
-  try {
-    parsed = new URL(input);
-  } catch {
-    return input;
-  }
-
+  try { parsed = new URL(input); } catch { return input; }
   const host = parsed.hostname.replace(/^www\./i, '').toLowerCase();
   let packageName = '';
   if (host === 'amzn.to' || host.endsWith('amazon.es') || host.endsWith('amazon.com')) packageName = 'com.amazon.mShop.android.shopping';
   if (host === 's.click.aliexpress.com' || host === 'a.aliexpress.com' || host.endsWith('aliexpress.com')) packageName = 'com.alibaba.aliexpresshd';
   if (!packageName) return input;
-
-  const fallback = encodeURIComponent(input);
-  const intentTarget = `${parsed.host}${parsed.pathname}${parsed.search}`;
-  return `intent://${intentTarget}#Intent;scheme=https;package=${packageName};S.browser_fallback_url=${fallback};end`;
+  return `intent://${parsed.host}${parsed.pathname}${parsed.search}#Intent;scheme=https;package=${packageName};S.browser_fallback_url=${encodeURIComponent(input)};end`;
 }
 
 async function resolveOfferUrl(rawUrl = '') {
   const input = String(rawUrl || '').trim();
   if (!input || !/^https?:\/\//i.test(input)) return input;
-
   let host = '';
-  try {
-    host = new URL(input).hostname.replace(/^www\./i, '').toLowerCase();
-  } catch {
-    return input;
-  }
-
+  try { host = new URL(input).hostname.replace(/^www\./i, '').toLowerCase(); } catch { return input; }
   if (!appLinkHosts.has(host)) return input;
   if (urlCache.has(input)) return urlCache.get(input);
-
   try {
     const response = await fetch(input, { method: 'GET', redirect: 'follow' });
     const resolved = response.url || input;
@@ -167,652 +149,158 @@ async function resolveOfferUrl(rawUrl = '') {
   }
 }
 
-const rawOffers = readJson(path.join(dataDir, 'offers.json'), []);
-
 function isBrokenOffer(o = {}) {
   const text = normalizeBodyText(`${o.title || ''} ${o.description || ''} ${o.text || ''}`).toLowerCase();
   const words = text.split(/\s+/).filter(Boolean);
   const uniqueWords = new Set(words).size;
-  return (
-    !o.message_id ||
-    /^la imagen es un/i.test(String(o.title || '')) ||
-    /^resumen del mensaje/i.test(String(o.title || '')) ||
-    /^si quieres, también puedo/i.test(text) ||
-    /^si quieres, tambien puedo/i.test(text) ||
-    /transcribir el texto exacto/i.test(text) ||
-    /redactarlo con tono más persuasivo/i.test(text) ||
-    /redactarlo con tono mas persuasivo/i.test(text) ||
-    (!o.url && !o.image && (words.length < 12 || uniqueWords < 8))
-  );
+  return !o.message_id || /^la imagen es un/i.test(String(o.title || '')) || /^resumen del mensaje/i.test(String(o.title || '')) || /transcribir el texto exacto|redactarlo con tono/i.test(text) || (!o.url && !o.image && (words.length < 12 || uniqueWords < 8));
 }
 
-const offers = Array.from(
-  new Map(
-    rawOffers
-      .slice()
-      .sort((a, b) => (b.date || 0) - (a.date || 0))
-      .filter((o) => !isBrokenOffer(o))
-      .map((o) => {
-        const text = normalizeBodyText(o.text || o.description || o.title || '');
-        const title = normalizeBodyText(o.title || '') || deriveTitle(o);
-        const priceFromText = extractPriceFromText(text);
-        const rawPrice = String(o.price || '').trim();
-        const price = priceFromText || (/\d/.test(rawPrice) && rawPrice && text.includes(rawPrice) ? rawPrice : '');
-        const description = text || normalizeBodyText(o.description || o.title || '');
-        const url = o.url || '';
-        const signature = [title, description, price, o.store || '', url].join('|').toLowerCase();
-        return [signature, { ...o, title, description, price, text: description }];
-      })
-  ).values()
-).map((o) => {
+const rawOffers = readJson(path.join(dataDir, 'offers.json'), []);
+const offers = Array.from(new Map(rawOffers.slice().sort((a, b) => (b.date || 0) - (a.date || 0)).filter((o) => !isBrokenOffer(o)).map((o) => {
+  const body = normalizeBodyText(o.text || o.description || o.title || '');
+  const title = cleanTitle(o.title || body || 'Oferta');
+  const price = extractPriceFromText(body) || String(o.price || '').trim();
+  const previousPrice = o.previousPrice || o.oldPrice || extractPrevious(body, o.description || '');
+  const description = cleanTitle(o.description || body || title).replace(/^🔥\s*/u, '');
+  const store = /aliexpress/i.test(`${o.store} ${o.url} ${title}`) ? 'AliExpress' : /amazon/i.test(`${o.store} ${o.url} ${title}`) ? 'Amazon' : (o.store || 'Tienda online');
+  const signature = [title, price, store, o.url || ''].join('|').toLowerCase();
+  return [signature, { ...o, rawTitle: o.title || '', title, price, previousPrice, discount: discountPct(price, previousPrice), description, store }];
+})).values()).map((o) => {
   const category = inferCategory(`${o.title || ''} ${o.description || ''}`, o.store || '');
-  const slug = slugify(o.title || o.description || `${o.store || 'oferta'}-${o.message_id || ''}`);
-  return {
-    ...o,
-    category,
-    categorySlug: slugify(category),
-    storeSlug: slugify(o.store || 'General'),
-    dateLabel: formatDate(o.date),
-    slug,
-    detailPath: `/oferta/${slug}/`,
-  };
+  const slug = slugify(o.title || `${o.store}-${o.message_id}`);
+  const legacySlug = slugify(normalizeBodyText(o.rawTitle || o.title || `${o.store}-${o.message_id}`));
+  const tags = Array.from(new Set([o.store, category, o.discount ? 'Descuento' : '', 'Chollo'].filter(Boolean)));
+  return { ...o, category, categorySlug: slugify(category), storeSlug: slugify(o.store || 'General'), dateLabel: formatDate(o.date), ago: timeAgo(o.date), slug, legacySlug, tags, detailPath: `/oferta/${slug}/` };
 });
 
-await Promise.all(
-  offers.map(async (offer) => {
-    const resolved = await resolveOfferUrl(offer.url);
-    offer.url = resolved;
-    offer.directUrl = resolved;
-    offer.appUrl = appIntentForUrl(resolved);
-    offer.goPath = `/go/${offer.slug}/`;
-    return offer;
-  })
-);
-
-const baseUrl = (process.env.SITE_URL || 'https://chollosaldia.com').replace(/\/$/, '');
-const hostName = (() => {
-  try {
-    return new URL(baseUrl).hostname;
-  } catch {
-    return '';
-  }
-})();
-
-const imageOffers = offers.filter((o) => o.image);
-const featured = (imageOffers.length ? imageOffers : offers).slice(0, 3);
-const latest = offers.slice(0, 12);
-const categories = Array.from(
-  new Set([
-    'Todo',
-    ...offers.map((o) => o.category).filter(Boolean),
-    ...offers.map((o) => o.store).filter(Boolean),
-  ])
-);
-
-const stats = {
-  offers: offers.length,
-  categories: new Set(offers.map((o) => o.category)).size,
-  stores: new Set(offers.map((o) => o.store).filter(Boolean)).size,
-};
-
-const latestJsonLd = offers.slice(0, 10).map((o, idx) => ({
-  '@type': 'ListItem',
-  position: idx + 1,
-  url: makeAbsoluteUrl(baseUrl, o.detailPath || o.url || ''),
-  name: o.title || 'Oferta',
+await Promise.all(offers.map(async (offer) => {
+  const resolved = await resolveOfferUrl(offer.url);
+  offer.url = resolved;
+  offer.directUrl = resolved;
+  offer.appUrl = appIntentForUrl(resolved);
+  offer.goPath = `/go/${offer.slug}/`;
+  return offer;
 }));
 
-const jsonLd = `
-<script type="application/ld+json">${JSON.stringify({
-  '@context': 'https://schema.org',
-  '@type': 'WebSite',
-  name: 'Chollos al Día',
-  url: baseUrl,
-  description: 'Ofertas y chollos actualizados desde Telegram.',
-  potentialAction: {
-    '@type': 'SearchAction',
-    target: `${baseUrl}/?q={search_term_string}`,
-    'query-input': 'required name=search_term_string',
-  },
-})}</script>
-<script type="application/ld+json">${JSON.stringify({
-  '@context': 'https://schema.org',
-  '@type': 'CollectionPage',
-  name: 'Chollos al Día',
-  url: baseUrl,
-  hasPart: {
-    '@type': 'ItemList',
-    itemListElement: latestJsonLd,
-  },
-})}</script>`;
+const categories = ['Todo', 'Tecnología', 'Hogar', 'Herramientas', 'Moda', 'Deportes', 'Supermercado', 'Niños y bebés', 'Coche y moto', 'Ofertas Amazon', 'Ofertas AliExpress', 'Chollos destacados'];
+const storeNames = ['Amazon', 'AliExpress', 'Miravia', 'Carrefour', 'MediaMarkt'];
+const featured = (offers.filter((o) => o.discount || /amazon|aliexpress/i.test(o.store)).length ? offers.filter((o) => o.discount || /amazon|aliexpress/i.test(o.store)) : offers).slice(0, 4);
+const latest = offers.slice(0, 12);
+const relatedFor = (offer) => offers.filter((o) => o.slug !== offer.slug && (o.category === offer.category || o.store === offer.store)).slice(0, 4);
 
-function card(o, featuredCard = false) {
-  const title = escapeHtml(fixText(o.title || 'Oferta'));
-  const price = escapeHtml(fixText(o.price || ''));
-  const detailUrl = escapeHtml(o.detailPath || '#');
-  const offerUrl = escapeHtml(o.goPath || o.url || o.detailPath || '#');
-  const image = o.image
-    ? `<img class="card__img" src="${escapeHtml(o.image)}" alt="${title}" loading="lazy">`
-    : `<div class="card__placeholder">Sin imagen</div>`;
-  const desc = escapeHtml(fixText(o.description || '')).slice(0, 180);
-  const store = escapeHtml(o.store || '');
-  const category = escapeHtml(o.category || 'General');
-  const dateLabel = escapeHtml(o.dateLabel || '');
-  const text = escapeHtml(fixText(`${o.title || ''} ${o.description || ''} ${o.store || ''} ${o.category || ''}`));
-  return `
-  <article class="card${featuredCard ? ' card--featured' : ''}" data-cat="${escapeHtml(o.categorySlug)}" data-store="${escapeHtml(o.storeSlug)}" data-text="${text}">
-    <a class="card__media" href="${detailUrl}">${image}</a>
-    <div class="card__body">
-      <div class="card__meta">
-        <span>${store}</span>
-        ${o.category !== o.store ? `<span>${category}</span>` : ''}
-        ${dateLabel ? `<span>${dateLabel}</span>` : ''}
-      </div>
-      <h2 class="card__title"><a href="${detailUrl}">${title}</a></h2>
-      <div class="card__price">${price}</div>
-      <p class="card__desc">${desc}</p>
-      <a class="btn" href="${offerUrl}" target="_blank" rel="noreferrer">Ver oferta</a>
-    </div>
+function seoJsonLd() {
+  return `<script type="application/ld+json">${JSON.stringify({
+    '@context': 'https://schema.org', '@type': 'WebSite', name: brand, url: baseUrl,
+    description: 'Ofertas Amazon, AliExpress y chollos diarios con descuentos actualizados.',
+    potentialAction: { '@type': 'SearchAction', target: `${baseUrl}/?q={search_term_string}`, 'query-input': 'required name=search_term_string' }
+  })}</script>`;
+}
+
+function layout({ title, description, canonical = baseUrl, content, extraHead = '', bodyClass = '' }) {
+  return `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(title)}</title>
+  <meta name="description" content="${escapeHtml(description)}" />
+  <link rel="canonical" href="${escapeHtml(canonical)}" />
+  <meta property="og:title" content="${escapeHtml(title)}" />
+  <meta property="og:description" content="${escapeHtml(description)}" />
+  <meta property="og:url" content="${escapeHtml(canonical)}" />
+  <meta property="og:type" content="website" />
+  ${seoJsonLd()}
+  ${extraHead}
+  <style>
+    :root{--bg:#f5f7fb;--ink:#101828;--muted:#667085;--card:#fff;--line:#e4e7ec;--brand:#ff7a00;--brand2:#ffb000;--dark:#0b1220;--green:#12b76a;--red:#f04438;--blue:#2563eb;--shadow:0 18px 45px rgba(16,24,40,.10)}
+    *{box-sizing:border-box}body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}a{color:inherit;text-decoration:none}img{max-width:100%;display:block}.wrap{max-width:1180px;margin:auto;padding:0 18px}.topbar{background:#0b1220;color:#d0d5dd;font-size:13px}.topbar__in{height:36px;display:flex;align-items:center;justify-content:space-between;gap:14px}.header{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.92);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}.nav{height:72px;display:flex;align-items:center;justify-content:space-between;gap:16px}.logo{display:flex;align-items:center;gap:10px;font-weight:900;font-size:22px}.logo__mark{width:40px;height:40px;border-radius:14px;background:linear-gradient(135deg,var(--brand),var(--brand2));display:grid;place-items:center;box-shadow:0 10px 25px rgba(255,122,0,.25)}.nav__links{display:flex;gap:16px;align-items:center;color:#344054;font-weight:700;font-size:14px}.telegram{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:#229ed9;color:white;padding:11px 15px;border-radius:999px;font-weight:900;box-shadow:0 10px 24px rgba(34,158,217,.25)}.hero{background:radial-gradient(circle at 15% 0%,rgba(255,176,0,.28),transparent 28%),linear-gradient(135deg,#101828,#0b1220 58%,#172554);color:white;padding:54px 0 36px}.hero__grid{display:grid;grid-template-columns:1.12fr .88fr;gap:26px;align-items:center}.kicker{display:inline-flex;gap:8px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);padding:8px 12px;border-radius:999px;font-weight:800;color:#fef3c7}.hero h1{font-size:clamp(34px,5vw,62px);line-height:.98;margin:18px 0 14px;letter-spacing:-.04em}.hero p{color:#d0d5dd;font-size:18px;line-height:1.55;max-width:680px}.hero__actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:22px}.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:14px;padding:13px 17px;font-weight:900;cursor:pointer}.btn--primary{background:linear-gradient(135deg,var(--brand2),var(--brand));color:#141414;box-shadow:0 12px 25px rgba(255,122,0,.28)}.btn--ghost{background:rgba(255,255,255,.10);color:white;border:1px solid rgba(255,255,255,.18)}.searchbox{background:white;border-radius:24px;padding:18px;box-shadow:var(--shadow);color:var(--ink)}.searchbox label{display:block;font-weight:900;margin-bottom:10px}.search{width:100%;border:1px solid var(--line);border-radius:14px;padding:15px 16px;font-size:16px}.trust{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}.trust div{background:#f9fafb;border:1px solid var(--line);border-radius:16px;padding:12px;font-size:13px;color:#475467;font-weight:700}.section{padding:34px 0}.section__head{display:flex;align-items:end;justify-content:space-between;gap:18px;margin-bottom:18px}.section h2{font-size:30px;margin:0;letter-spacing:-.03em}.section p{margin:6px 0 0;color:var(--muted)}.filters,.storebar{display:flex;gap:10px;overflow:auto;padding:2px 0 12px}.chip,.filter{white-space:nowrap;border:1px solid var(--line);background:white;color:#344054;border-radius:999px;padding:10px 13px;font-weight:800;cursor:pointer}.filter.is-active,.chip--hot{background:#111827;color:white;border-color:#111827}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}.card{background:var(--card);border:1px solid var(--line);border-radius:22px;overflow:hidden;box-shadow:0 8px 24px rgba(16,24,40,.06);display:flex;flex-direction:column;min-width:0}.card--featured{grid-column:span 2}.card__media{position:relative;aspect-ratio:4/3;background:#eef2f6;display:grid;place-items:center;overflow:hidden}.card__img{width:100%;height:100%;object-fit:cover;transition:transform .2s}.card:hover .card__img{transform:scale(1.035)}.badge{position:absolute;left:12px;top:12px;background:#111827;color:white;border-radius:999px;padding:7px 10px;font-size:12px;font-weight:900}.discount{position:absolute;right:12px;top:12px;background:var(--red);color:white;border-radius:999px;padding:7px 10px;font-size:12px;font-weight:900}.card__body{padding:15px;display:flex;flex-direction:column;gap:10px;flex:1}.meta{display:flex;gap:8px;flex-wrap:wrap;color:#667085;font-size:12px;font-weight:800}.tag{background:#f2f4f7;border-radius:999px;padding:5px 8px}.card__title{font-size:16px;line-height:1.25;margin:0;letter-spacing:-.01em}.priceRow{display:flex;align-items:baseline;gap:9px}.price{font-size:24px;font-weight:950;color:#dc6803}.old{color:#98a2b3;text-decoration:line-through;font-weight:800}.desc{color:#667085;font-size:14px;line-height:1.45;margin:0}.buy{margin-top:auto;width:100%;background:linear-gradient(135deg,var(--brand2),var(--brand));color:#111;border-radius:14px;padding:13px 15px;text-align:center;font-weight:950}.stores{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}.store{background:white;border:1px solid var(--line);border-radius:20px;padding:18px;box-shadow:0 8px 24px rgba(16,24,40,.05)}.store strong{display:block;font-size:18px}.telegramBlock{background:linear-gradient(135deg,#229ed9,#126fa5);color:white;border-radius:28px;padding:26px;display:flex;align-items:center;justify-content:space-between;gap:20px;box-shadow:var(--shadow)}.telegramBlock p{color:#e6f5ff}.footer{background:#0b1220;color:#98a2b3;padding:34px 0;margin-top:36px}.footer__grid{display:grid;grid-template-columns:1.4fr repeat(3,1fr);gap:18px}.footer a{display:block;margin:8px 0;color:#d0d5dd}.fixedTelegram{position:fixed;right:16px;bottom:16px;z-index:30}.legal{max-width:860px;background:white;border:1px solid var(--line);border-radius:24px;padding:28px;box-shadow:var(--shadow);margin:32px auto;line-height:1.7}.detailHero{padding:34px 0}.detail{display:grid;grid-template-columns:.95fr 1.05fr;gap:24px}.panel{background:white;border:1px solid var(--line);border-radius:26px;padding:22px;box-shadow:var(--shadow)}.detail__img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:22px;background:#eef2f6}.detail h1{font-size:clamp(30px,4vw,48px);line-height:1.05;margin:12px 0}.notice{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:16px;padding:13px;font-weight:700}.related{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.hide{display:none!important}@media(max-width:980px){.hero__grid,.detail{grid-template-columns:1fr}.grid{grid-template-columns:repeat(2,1fr)}.stores,.related{grid-template-columns:repeat(2,1fr)}.nav__links{display:none}.footer__grid{grid-template-columns:1fr 1fr}.card--featured{grid-column:span 1}}@media(max-width:560px){.topbar__in{height:auto;padding:8px 0;align-items:flex-start;flex-direction:column}.nav{height:64px}.hero{padding:34px 0 26px}.grid,.stores,.related{grid-template-columns:1fr}.trust{grid-template-columns:1fr}.telegramBlock{display:block}.footer__grid{grid-template-columns:1fr}.fixedTelegram{left:16px}.fixedTelegram .telegram{width:100%}}
+  </style>
+</head>
+<body class="${bodyClass}">
+  <div class="topbar"><div class="wrap topbar__in"><span>Precios y stock pueden cambiar sin aviso.</span><span>Como afiliados, podemos recibir comisión sin coste adicional para ti.</span></div></div>
+  <header class="header"><div class="wrap nav"><a class="logo" href="${baseUrl}"><span class="logo__mark">🔥</span><span>${brand}</span></a><nav class="nav__links"><a href="${baseUrl}#destacadas">Destacadas</a><a href="${baseUrl}#ultimas">Últimas</a><a href="${baseUrl}#tiendas">Tiendas</a><a href="${baseUrl}/contacto/">Contacto</a></nav><a class="telegram" href="${telegramUrl}" target="_blank" rel="noreferrer">Únete a Telegram</a></div></header>
+  ${content}
+  <a class="fixedTelegram telegram" href="${telegramUrl}" target="_blank" rel="noreferrer">📲 Telegram</a>
+  <footer class="footer"><div class="wrap footer__grid"><div><div class="logo" style="color:white"><span class="logo__mark">🔥</span><span>${brand}</span></div><p>Ofertas Amazon, AliExpress y otras tiendas. Chollos claros, rápidos y sin ruido.</p></div><div><strong>Secciones</strong><a href="${baseUrl}#destacadas">Destacadas</a><a href="${baseUrl}#ultimas">Últimas ofertas</a><a href="${telegramUrl}">Telegram</a></div><div><strong>Tiendas</strong><a href="${baseUrl}#tiendas">Amazon</a><a href="${baseUrl}#tiendas">AliExpress</a><a href="${baseUrl}#tiendas">Más tiendas</a></div><div><strong>Legal</strong><a href="${baseUrl}/aviso-legal/">Aviso legal</a><a href="${baseUrl}/privacidad/">Privacidad</a><a href="${baseUrl}/contacto/">Contacto</a></div></div></footer>
+  <script>
+    const search = document.querySelector('#search');
+    const filters = [...document.querySelectorAll('[data-filter]')];
+    const cards = [...document.querySelectorAll('[data-card]')];
+    function applyFilter(filter='todo') {
+      const q = (search?.value || '').toLowerCase().trim();
+      cards.forEach(card => {
+        const okFilter = filter === 'todo' || card.dataset.cat === filter || card.dataset.store === filter || (card.dataset.tags || '').includes(filter);
+        const okSearch = !q || (card.dataset.text || '').includes(q);
+        card.classList.toggle('hide', !(okFilter && okSearch));
+      });
+    }
+    filters.forEach(btn => btn.addEventListener('click', () => { filters.forEach(b => b.classList.remove('is-active')); btn.classList.add('is-active'); applyFilter(btn.dataset.filter || 'todo'); }));
+    search?.addEventListener('input', () => applyFilter(document.querySelector('.filter.is-active')?.dataset.filter || 'todo'));
+  </script>
+</body>
+</html>`;
+}
+
+function offerCard(o, featuredCard = false) {
+  const tags = o.tags.slice(0, 3).map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join('');
+  const text = escapeHtml(`${o.title} ${o.description} ${o.store} ${o.category} ${o.tags.join(' ')}`.toLowerCase());
+  return `<article class="card${featuredCard ? ' card--featured' : ''}" data-card data-cat="${escapeHtml(o.categorySlug)}" data-store="${escapeHtml(o.storeSlug)}" data-tags="${escapeHtml(o.tags.map(slugify).join(' '))}" data-text="${text}">
+    <a class="card__media" href="${escapeHtml(o.detailPath)}">${o.image ? `<img class="card__img" src="${escapeHtml(o.image)}" alt="${escapeHtml(o.title)}" loading="lazy">` : '<div>Sin imagen</div>'}<span class="badge">${escapeHtml(o.store)}</span>${o.discount ? `<span class="discount">${escapeHtml(o.discount)}</span>` : ''}</a>
+    <div class="card__body"><div class="meta"><span>${escapeHtml(o.category)}</span><span>${escapeHtml(o.ago)}</span></div><h3 class="card__title"><a href="${escapeHtml(o.detailPath)}">${escapeHtml(o.title)}</a></h3><div class="priceRow">${o.price ? `<span class="price">${escapeHtml(o.price)}</span>` : '<span class="price">Ver precio</span>'}${o.previousPrice ? `<span class="old">${escapeHtml(o.previousPrice)}</span>` : ''}</div><p class="desc">${escapeHtml(o.description).slice(0, 120)}</p><div class="meta">${tags}</div><a class="buy" href="${escapeHtml(o.goPath)}" target="_blank" rel="noreferrer">Ver oferta</a></div>
   </article>`;
 }
 
-function splitSentences(text = '') {
-  return String(text)
-    .replace(/\s+/g, ' ')
-    .split(/(?<=[.!?])\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-function summarizePros(o) {
-  const text = `${o.title || ''} ${o.description || ''}`.toLowerCase();
-  const pros = [];
-  if (/amazon/i.test(text)) pros.push('Envío y compra sencilla desde Amazon.');
-  if (/aliexpress/i.test(text)) pros.push('Precio agresivo y posibilidad de cupones.');
-  if (/wifi|wi-fi|wifi integrado/i.test(text)) pros.push('Conectividad inteligente para usarlo mejor.');
-  if (/4k|qled|oled|hdr|144 hz|120 hz|ips|amoled/i.test(text)) pros.push('Especificaciones potentes para su categoría.');
-  if (/nfc|gps|bluetooth|usb-c|inverter|brushless/i.test(text)) pros.push('Incluye extras útiles que mejoran la experiencia.');
-  if (/ofertón|chollo|descuento|oferta/i.test(text)) pros.push('Precio de entrada atractivo para comprar hoy.');
-  if (o.image) pros.push('La foto original ayuda a ver el producto real.');
-  return pros.slice(0, 4);
-}
-
-function summarizeCons(o) {
-  const text = `${o.title || ''} ${o.description || ''}`.toLowerCase();
-  const cons = [];
-  if (!o.url) cons.push('No tenemos aún enlace de compra directo.');
-  if (/amazon/i.test(text) && !/prime/i.test(text)) cons.push('Puede variar el precio según stock.');
-  if (/aliexpress/i.test(text)) cons.push('El envío puede ser más lento que en tiendas locales.');
-  if (/tv|monitor|portátil|hogar|aire acondicionado/i.test(text)) cons.push('Conviene comparar medidas y modelo exacto antes de comprar.');
-  if (cons.length === 0) cons.push('Revisar bien el precio final y el envío antes de pagar.');
-  return cons.slice(0, 3);
-}
-
-function summarizeReasons(o) {
-  const text = `${o.title || ''} ${o.description || ''}`.toLowerCase();
-  const reasons = [];
-  if (/monitor|tv|portátil|pc|gaming/i.test(text)) reasons.push('Merece la pena si buscas mejorar tu setup o renovar equipo.');
-  if (/hogar|freidora|aspirador|aire acondicionado|cocina/i.test(text)) reasons.push('Es buena compra si quieres ahorrar tiempo y comodidad en casa.');
-  if (/móvil|smartphone|reloj|watch|wearable/i.test(text)) reasons.push('Interesa si quieres un dispositivo actualizado sin pagar precio de lanzamiento.');
-  if (/amazon/i.test(text)) reasons.push('Amazon suele dar más confianza por devolución y entrega.');
-  if (/aliexpress/i.test(text)) reasons.push('AliExpress puede salir muy bien si aplicas cupón y revisas el vendedor.');
-  if (reasons.length === 0) reasons.push('Es una oportunidad razonable si el precio actual está por debajo de lo normal.');
-  return reasons.slice(0, 3);
-}
-
-function characteristics(o) {
-  const pieces = [];
-  const text = `${o.title || ''} ${o.description || ''}`;
-  const price = o.price ? `Precio detectado: ${o.price}` : '';
-  if (price) pieces.push(price);
-  if (o.category) pieces.push(`Categoría: ${o.category}`);
-  if (o.store) pieces.push(`Tienda: ${o.store}`);
-  if (/wifi|wi-fi/i.test(text)) pieces.push('Con Wi‑Fi / conectividad smart');
-  if (/nfc/i.test(text)) pieces.push('Pagos o funciones NFC');
-  if (/gps/i.test(text)) pieces.push('Incluye GPS');
-  if (/4k|qled|oled/i.test(text)) pieces.push('Pantalla o panel de alta gama');
-  if (/144 hz|120 hz|90 hz/i.test(text)) pieces.push('Alta tasa de refresco');
-  if (/usb-c/i.test(text)) pieces.push('Carga o conexión USB‑C');
-  if (/inverter/i.test(text)) pieces.push('Tecnología Inverter');
-  return pieces.slice(0, 6);
+function homePage() {
+  const content = `<main>
+    <section class="hero"><div class="wrap hero__grid"><div><span class="kicker">🔥 Chollos diarios · Amazon · AliExpress · Más tiendas</span><h1>Ofertas claras para comprar al mejor precio.</h1><p>Encuentra descuentos interesantes en tecnología, hogar, supermercado, moda y más. Publicamos chollos rápidos, con enlaces de afiliado preparados para comprar sin complicaciones.</p><div class="hero__actions"><a class="btn btn--primary" href="#destacadas">Ver ofertas destacadas</a><a class="btn btn--ghost" href="${telegramUrl}" target="_blank" rel="noreferrer">Recibir chollos en Telegram</a></div></div><div class="searchbox"><label for="search">Buscar ofertas</label><input class="search" id="search" placeholder="Busca Amazon, AliExpress, tecnología, hogar..." /><div class="trust"><div>✅ Ofertas revisadas</div><div>⚡ Web rápida</div><div>📲 Telegram diario</div></div></div></div></section>
+    <section class="section"><div class="wrap"><div class="filters">${categories.map((c, i) => `<button class="filter${i === 0 ? ' is-active' : ''}" data-filter="${slugify(c)}">${escapeHtml(c)}</button>`).join('')}</div></div></section>
+    <section class="section" id="destacadas"><div class="wrap"><div class="section__head"><div><h2>Chollos destacados</h2><p>Ofertas interesantes con precio llamativo o descuento disponible.</p></div><a class="chip chip--hot" href="${telegramUrl}" target="_blank" rel="noreferrer">Únete al canal</a></div><div class="grid">${featured.map((o, i) => offerCard(o, i === 0)).join('')}</div></div></section>
+    <section class="section" id="ultimas"><div class="wrap"><div class="section__head"><div><h2>Últimas ofertas publicadas</h2><p>Chollos recientes de Amazon, AliExpress y otras tiendas.</p></div></div><div class="grid">${latest.map((o) => offerCard(o)).join('')}</div></div></section>
+    <section class="section" id="tiendas"><div class="wrap"><div class="section__head"><div><h2>Ofertas por tienda</h2><p>Accesos rápidos para encontrar descuentos por comercio.</p></div></div><div class="stores">${storeNames.map((store) => { const count = offers.filter((o) => o.store.toLowerCase() === store.toLowerCase()).length; return `<button class="store" data-filter="${slugify(store)}"><strong>${escapeHtml(store)}</strong><span>${count ? `${count} ofertas` : 'Preparado para nuevas ofertas'}</span></button>`; }).join('')}</div></div></section>
+    <section class="section"><div class="wrap"><div class="telegramBlock"><div><h2>Recibe los mejores chollos antes de que se agoten</h2><p>Ofertas diarias en Amazon, AliExpress y más. Sin spam: solo descuentos interesantes.</p></div><a class="btn btn--primary" href="${telegramUrl}" target="_blank" rel="noreferrer">Únete al canal de Telegram</a></div></div></section>
+  </main>`;
+  return layout({ title: 'Chollos al Día | Ofertas Amazon, AliExpress y descuentos diarios', description: 'Encuentra chollos, ofertas Amazon, descuentos AliExpress y mejores ofertas diarias con enlaces de afiliado claros y rápidos.', content });
 }
 
 function detailPage(o) {
-  const title = escapeHtml(fixText(o.title || 'Oferta'));
-  const image = o.image ? `<img class="detail__img" src="${escapeHtml(o.image)}" alt="${title}">` : '<div class="detail__img detail__placeholder">Sin imagen</div>';
-  const buyUrl = escapeHtml(o.goPath || o.url || 'https://t.me/aldiachollos');
-  const chars = characteristics(o);
-  const pros = summarizePros(o);
-  const cons = summarizeCons(o);
-  const reasons = summarizeReasons(o);
-  const text = escapeHtml(fixText(`${o.title || ''} ${o.description || ''}`.slice(0, 240)));
-  return `<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${title} | Chollos al Día</title>
-  <meta name="description" content="${text}" />
-  <link rel="canonical" href="${baseUrl}${o.detailPath}" />
-  <style>
-    body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:linear-gradient(180deg,#07111d,#0d1726);color:#e9f2ff}
-    a{color:inherit;text-decoration:none}
-    .wrap{max-width:1040px;margin:0 auto;padding:24px}
-    .top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:20px}
-    .pill{display:inline-block;padding:10px 14px;border:1px solid #20314c;border-radius:14px;background:rgba(255,255,255,.04)}
-    .grid{display:grid;grid-template-columns:1.05fr .95fr;gap:18px}
-    .card{background:#0f1a2d;border:1px solid #20314c;border-radius:24px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.26)}
-    .detail__img,.detail__placeholder{width:100%;min-height:360px;object-fit:cover;background:#101c31;display:grid;place-items:center;color:#99abc5}
-    .body{padding:22px}
-    h1{margin:0 0 10px;font-size:clamp(30px,4vw,48px);line-height:1}
-    .meta{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}
-    .meta span{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#a9b9d0;background:rgba(255,255,255,.05);border:1px solid #20314c;padding:6px 8px;border-radius:999px}
-    .price{font-size:34px;font-weight:900;color:#ffb000;margin:8px 0 18px}
-    .box{background:rgba(255,255,255,.03);border:1px solid #20314c;border-radius:20px;padding:18px;margin-bottom:14px}
-    .box h2{margin:0 0 10px;font-size:18px}
-    ul{margin:0;padding-left:18px;color:#99abc5;line-height:1.7}
-    .buy{display:inline-block;margin-top:12px;padding:14px 18px;border-radius:14px;background:linear-gradient(135deg,#ffb000,#ff8a00);color:#111;font-weight:900}
-    @media(max-width:900px){.grid{grid-template-columns:1fr}}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="top">
-      <a class="pill" href="${baseUrl}">← Volver</a>
-      <a class="pill" href="https://t.me/aldiachollos" target="_blank" rel="noreferrer">Telegram</a>
-    </div>
-    <div class="grid">
-      <article class="card">
-        ${image}
-        <div class="body">
-          <div class="meta">
-            <span>${escapeHtml(o.store || 'Oferta')}</span>
-            ${o.category !== o.store ? `<span>${escapeHtml(o.category || 'General')}</span>` : ''}
-            ${o.dateLabel ? `<span>${escapeHtml(o.dateLabel)}</span>` : ''}
-          </div>
-          <h1>${title}</h1>
-          <div class="price">${escapeHtml(o.price || '')}</div>
-          <div class="box"><h2>Descripción</h2><p style="margin:0;color:#99abc5;line-height:1.7">${escapeHtml(o.description || 'Sin descripción adicional.')}</p></div>
-          <a class="buy" href="${buyUrl}" target="_blank" rel="noreferrer">Ver oferta original</a>
-        </div>
-      </article>
-      <div>
-        <div class="box">
-          <h2>Características</h2>
-          <ul>${chars.length ? chars.map((x) => `<li>${escapeHtml(x)}</li>`).join('') : '<li>Sin datos suficientes, revisa la oferta original.</li>'}</ul>
-        </div>
-        <div class="box">
-          <h2>Pros</h2>
-          <ul>${pros.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>
-        </div>
-        <div class="box">
-          <h2>Contras</h2>
-          <ul>${cons.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>
-        </div>
-        <div class="box">
-          <h2>Por qué merece la pena</h2>
-          <ul>${reasons.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>
-        </div>
-      </div>
-    </div>
-    <div style="margin-top:18px;font-size:12px;color:#99abc5;opacity:.9">Como asociado de Amazon, puedo obtener ingresos por compras válidas.</div>
-  </div>
-</body>
-</html>`;
+  const related = relatedFor(o);
+  const productJsonLd = `<script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@type': 'Product', name: o.title, image: o.image ? `${baseUrl}${o.image}` : undefined, description: o.description, offers: { '@type': 'Offer', priceCurrency: 'EUR', price: parseEuro(o.price) || undefined, url: `${baseUrl}${o.goPath}`, availability: 'https://schema.org/InStock' } })}</script>`;
+  const content = `<main class="detailHero"><div class="wrap"><div class="detail"><div class="panel">${o.image ? `<img class="detail__img" src="${escapeHtml(o.image)}" alt="${escapeHtml(o.title)}">` : '<div class="detail__img"></div>'}</div><article class="panel"><div class="meta"><span class="tag">${escapeHtml(o.store)}</span><span class="tag">${escapeHtml(o.category)}</span><span class="tag">${escapeHtml(o.ago)}</span>${o.discount ? `<span class="tag">${escapeHtml(o.discount)}</span>` : ''}</div><h1>${escapeHtml(o.title)}</h1><div class="priceRow">${o.price ? `<span class="price">${escapeHtml(o.price)}</span>` : '<span class="price">Ver precio</span>'}${o.previousPrice ? `<span class="old">${escapeHtml(o.previousPrice)}</span>` : ''}</div><p>${escapeHtml(o.description)}</p><a class="btn btn--primary" href="${escapeHtml(o.goPath)}" target="_blank" rel="noreferrer">Ver oferta</a><p class="notice">El precio y la disponibilidad pueden cambiar. Revisa siempre el precio final en la tienda antes de comprar.</p><p class="meta">Como afiliados, podemos recibir una comisión por compras realizadas desde nuestros enlaces, sin coste adicional para ti.</p></article></div>
+    <section class="section"><div class="section__head"><div><h2>Ventajas de esta oferta</h2><p>Información rápida para decidir mejor.</p></div></div><div class="stores"><div class="store"><strong>Buen precio para</strong><span>${escapeHtml(o.category.toLowerCase())}</span></div><div class="store"><strong>Tienda</strong><span>${escapeHtml(o.store)}</span></div><div class="store"><strong>Publicado</strong><span>${escapeHtml(o.dateLabel || o.ago)}</span></div><div class="store"><strong>Compra rápida</strong><span>Botón con enlace de afiliado</span></div><div class="store"><strong>Recomendación</strong><span>Compara precio final y envío</span></div></div></section>
+    ${related.length ? `<section class="section"><div class="section__head"><div><h2>Ofertas relacionadas</h2><p>Más chollos similares que pueden interesarte.</p></div></div><div class="related">${related.map((x) => offerCard(x)).join('')}</div></section>` : ''}
+    </div></main>`;
+  return layout({ title: `${o.title} | Oferta en ${o.store}`, description: `${o.title}. ${o.price ? `Precio visto: ${o.price}. ` : ''}Chollo publicado en Chollos al Día.`, canonical: `${baseUrl}${o.detailPath}`, content, extraHead: productJsonLd });
 }
 
 function redirectPage(o) {
-  const title = escapeHtml(fixText(o.title || 'Oferta'));
-  const directUrl = o.directUrl || o.url || 'https://t.me/aldiachollos';
+  const directUrl = o.directUrl || o.url || telegramUrl;
   const appUrl = o.appUrl || appIntentForUrl(directUrl);
-  const directJson = JSON.stringify(directUrl);
-  const appJson = JSON.stringify(appUrl);
-  const directHref = escapeHtml(directUrl);
-  return `<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="robots" content="noindex,nofollow" />
-  <title>Abriendo oferta | Chollos al Día</title>
-  <style>
-    body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:#07111d;color:#e9f2ff;text-align:center;padding:24px}
-    .box{max-width:520px;background:#0f1a2d;border:1px solid #20314c;border-radius:24px;padding:28px;box-shadow:0 12px 40px rgba(0,0,0,.28)}
-    h1{margin:0 0 12px;font-size:28px}.muted{color:#99abc5;line-height:1.5}.btn{display:inline-block;margin-top:18px;padding:14px 18px;border-radius:14px;background:linear-gradient(135deg,#ffb000,#ff8a00);color:#111;font-weight:900;text-decoration:none}
-  </style>
-</head>
-<body>
-  <div class="box">
-    <h1>Abriendo Amazon…</h1>
-    <p class="muted">${title}</p>
-    <p class="muted">Si no se abre la app automáticamente, pulsa el botón.</p>
-    <a class="btn" id="open" href="${directHref}" rel="noreferrer">Abrir oferta</a>
-  </div>
-  <script>
-    const directUrl = ${directJson};
-    const appUrl = ${appJson};
-    const open = document.getElementById('open');
-    open.href = appUrl;
-    window.location.href = appUrl;
-    setTimeout(() => { open.href = directUrl; }, 1800);
-  </script>
-</body>
-</html>`;
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Abriendo oferta | ${brand}</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:#0b1220;color:white;text-align:center;padding:24px}.box{max-width:520px;background:#111827;border:1px solid #344054;border-radius:24px;padding:28px}.btn{display:inline-block;margin-top:18px;padding:14px 18px;border-radius:14px;background:linear-gradient(135deg,#ffb000,#ff7a00);color:#111;font-weight:900;text-decoration:none}.muted{color:#d0d5dd}</style></head><body><div class="box"><h1>Abriendo oferta…</h1><p class="muted">${escapeHtml(o.title)}</p><p class="muted">Si no se abre automáticamente, pulsa el botón.</p><a class="btn" id="open" href="${escapeHtml(directUrl)}">Ver oferta</a></div><script>const directUrl=${JSON.stringify(directUrl)};const appUrl=${JSON.stringify(appUrl)};const open=document.getElementById('open');open.href=appUrl;window.location.href=appUrl;setTimeout(()=>{open.href=directUrl},1800);</script></body></html>`;
 }
 
 function genericRedirectPage() {
-  return `<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="robots" content="noindex,nofollow" />
-  <title>Abriendo oferta | Chollos al Día</title>
-  <style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:#07111d;color:#e9f2ff;text-align:center;padding:24px}.box{max-width:520px;background:#0f1a2d;border:1px solid #20314c;border-radius:24px;padding:28px}h1{margin:0 0 12px}.muted{color:#99abc5}.btn{display:inline-block;margin-top:18px;padding:14px 18px;border-radius:14px;background:linear-gradient(135deg,#ffb000,#ff8a00);color:#111;font-weight:900;text-decoration:none}</style>
-</head>
-<body>
-  <div class="box"><h1>Abriendo oferta…</h1><p class="muted">Intentando abrir la app de la tienda.</p><a class="btn" id="open" href="https://t.me/aldiachollos">Abrir oferta</a></div>
-  <script>
-    const params = new URLSearchParams(location.search || location.hash.replace(/^#/, '?'));
-    const directUrl = params.get('url') || params.get('u') || 'https://t.me/aldiachollos';
-    function appIntentForUrl(input) {
-      try {
-        const parsed = new URL(input);
-        const host = parsed.hostname.replace(/^www\./i, '').toLowerCase();
-        let pkg = '';
-        if (host === 'amzn.to' || host.endsWith('amazon.es') || host.endsWith('amazon.com')) pkg = 'com.amazon.mShop.android.shopping';
-        if (host === 's.click.aliexpress.com' || host === 'a.aliexpress.com' || host.endsWith('aliexpress.com')) pkg = 'com.alibaba.aliexpresshd';
-        if (!pkg) return input;
-        return 'intent://' + parsed.host + parsed.pathname + parsed.search + '#Intent;scheme=https;package=' + pkg + ';S.browser_fallback_url=' + encodeURIComponent(input) + ';end';
-      } catch { return input; }
-    }
-    const appUrl = appIntentForUrl(directUrl);
-    const open = document.getElementById('open');
-    open.href = appUrl;
-    window.location.href = appUrl;
-    setTimeout(() => { open.href = directUrl; }, 1800);
-  </script>
-</body>
-</html>`;
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Abriendo oferta | ${brand}</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:#0b1220;color:white;text-align:center;padding:24px}.box{max-width:520px;background:#111827;border:1px solid #344054;border-radius:24px;padding:28px}.btn{display:inline-block;margin-top:18px;padding:14px 18px;border-radius:14px;background:linear-gradient(135deg,#ffb000,#ff7a00);color:#111;font-weight:900;text-decoration:none}</style></head><body><div class="box"><h1>Abriendo oferta…</h1><p>Intentando abrir la app de la tienda.</p><a class="btn" id="open" href="${telegramUrl}">Ver oferta</a></div><script>const params=new URLSearchParams(location.search||location.hash.replace(/^#/,'?'));const directUrl=params.get('url')||params.get('u')||'${telegramUrl}';function appIntentForUrl(input){try{const p=new URL(input);const h=p.hostname.replace(/^www\\./i,'').toLowerCase();let pkg='';if(h==='amzn.to'||h.endsWith('amazon.es')||h.endsWith('amazon.com'))pkg='com.amazon.mShop.android.shopping';if(h==='s.click.aliexpress.com'||h==='a.aliexpress.com'||h.endsWith('aliexpress.com'))pkg='com.alibaba.aliexpresshd';if(!pkg)return input;return 'intent://'+p.host+p.pathname+p.search+'#Intent;scheme=https;package='+pkg+';S.browser_fallback_url='+encodeURIComponent(input)+';end'}catch{return input}}const appUrl=appIntentForUrl(directUrl);const open=document.getElementById('open');open.href=appUrl;window.location.href=appUrl;setTimeout(()=>{open.href=directUrl},1800);</script></body></html>`;
 }
 
-const html = `<!doctype html>
-<html lang="es">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Chollos al Día | Ofertas y chollos actualizados</title>
-<meta name="description" content="Ofertas y chollos actualizados desde Telegram. Amazon, AliExpress, tecnología, hogar y más." />
-<link rel="canonical" href="${baseUrl}" />
-<meta property="og:title" content="Chollos al Día" />
-<meta property="og:description" content="Ofertas y chollos actualizados desde Telegram." />
-<meta property="og:type" content="website" />
-<meta property="og:url" content="${baseUrl}" />
-<meta name="twitter:card" content="summary_large_image" />
-<meta name="robots" content="index,follow" />
-${jsonLd}
-<style>
-  :root{
-    --bg:#07111d;
-    --bg2:#0d1726;
-    --card:#0f1a2d;
-    --card2:#12213a;
-    --txt:#e9f2ff;
-    --muted:#99abc5;
-    --line:#20314c;
-    --accent:#ffb000;
-    --accent2:#63d2ff;
-    --shadow:0 12px 40px rgba(0,0,0,.26);
-  }
-  *{box-sizing:border-box}
-  html{scroll-behavior:smooth}
-  body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;background:radial-gradient(1200px 600px at 20% 0%, #12203b 0%, transparent 60%),linear-gradient(180deg,var(--bg),var(--bg2));color:var(--txt)}
-  a{color:inherit}
-  .container{max-width:1180px;margin:0 auto;padding:0 20px}
-  .topbar{position:sticky;top:0;z-index:20;backdrop-filter:blur(14px);background:rgba(7,17,29,.76);border-bottom:1px solid rgba(32,49,76,.65)}
-  .topbar__inner{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0}
-  .brand{display:flex;align-items:center;gap:12px;text-decoration:none}
-  .brand__mark{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,var(--accent),#ff7a00);display:grid;place-items:center;color:#111;font-weight:900;box-shadow:var(--shadow)}
-  .brand__text strong{display:block;font-size:15px;line-height:1}
-  .brand__text span{display:block;font-size:12px;color:var(--muted);margin-top:4px}
-  .topbar__actions{display:flex;gap:10px;flex-wrap:wrap}
-  .pill,.btn{display:inline-flex;align-items:center;justify-content:center;border-radius:14px;text-decoration:none;font-weight:800;border:1px solid transparent}
-  .pill{padding:10px 14px;background:rgba(255,255,255,.04);border-color:var(--line);color:var(--txt)}
-  .pill--accent,.btn{background:linear-gradient(135deg,var(--accent),#ff8a00);color:#111}
-  .hero{padding:38px 0 18px}
-  .hero__grid{display:grid;grid-template-columns:1.15fr .85fr;gap:22px;align-items:stretch}
-  .hero__card{background:linear-gradient(180deg,rgba(18,33,58,.95),rgba(15,26,45,.95));border:1px solid var(--line);border-radius:28px;box-shadow:var(--shadow);padding:28px}
-  .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--accent2);margin-bottom:12px}
-  h1{margin:0;font-size:clamp(34px,5vw,58px);line-height:.96;letter-spacing:-.04em}
-  .hero p{color:var(--muted);line-height:1.7;font-size:16px;max-width:62ch}
-  .hero__cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:22px}
-  .hero__stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-  .stat{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:22px;padding:18px;display:flex;flex-direction:column;justify-content:center;min-height:120px}
-  .stat strong{font-size:32px;line-height:1}
-  .stat span{color:var(--muted);margin-top:8px;font-size:13px;line-height:1.4}
-  .section{padding:18px 0 34px}
-  .section__head{display:flex;align-items:end;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:16px}
-  .section__head h2{margin:0;font-size:28px;letter-spacing:-.03em}
-  .section__head p{margin:0;color:var(--muted)}
-  .filters{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0 22px}
-  .filter{cursor:pointer;border:none;padding:10px 14px;border-radius:999px;background:rgba(255,255,255,.04);border:1px solid var(--line);color:var(--txt);font-weight:700}
-  .filter.is-active{background:linear-gradient(135deg,var(--accent2),#92f0ff);color:#07111d;border-color:transparent}
-  .searchbar{display:flex;gap:10px;align-items:center;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:18px;padding:12px 14px;margin-top:16px}
-  .searchbar input{flex:1;border:none;background:transparent;color:var(--txt);outline:none;font:inherit}
-  .searchbar input::placeholder{color:#8ba0be}
-  .featured{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
-  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
-  .card{background:linear-gradient(180deg,var(--card),rgba(15,26,45,.88));border:1px solid var(--line);border-radius:24px;overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column;min-height:100%}
-  .card--featured{border-color:rgba(255,176,0,.5)}
-  .card__media{display:block;text-decoration:none}
-  .card__img,.card__placeholder{width:100%;height:220px;display:block;object-fit:cover;background:linear-gradient(135deg,#101c31,#07111d);}
-  .card__placeholder{display:grid;place-items:center;color:var(--muted);font-weight:800;letter-spacing:.03em}
-  .card__body{padding:18px}
-  .card__meta{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-  .card__meta span{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#a9b9d0;background:rgba(255,255,255,.05);border:1px solid var(--line);padding:6px 8px;border-radius:999px}
-  .card__title{margin:0 0 10px;font-size:18px;line-height:1.2;letter-spacing:-.02em}
-  .card__title a{text-decoration:none}
-  .card__price{font-size:28px;font-weight:900;color:var(--accent);margin-bottom:10px}
-  .card__desc{margin:0 0 16px;color:var(--muted);line-height:1.6;font-size:14px}
-  .btn{padding:12px 16px;box-shadow:0 8px 18px rgba(255,176,0,.18)}
-  .two-col{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}
-  .panel{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:24px;padding:22px;box-shadow:var(--shadow)}
-  .stores{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:14px}
-  .store{display:flex;justify-content:space-between;gap:12px;align-items:center;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:18px;padding:14px 16px;text-decoration:none}
-  .store strong{display:block}
-  .store span{display:block;color:var(--muted);font-size:13px;margin-top:4px}
-  .faq{display:grid;gap:12px}
-  .faq details{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:18px;padding:14px 16px}
-  .faq summary{cursor:pointer;font-weight:800}
-  .faq p{margin:10px 0 0;color:var(--muted);line-height:1.6}
-  .empty{padding:26px;border:1px dashed var(--line);border-radius:24px;color:var(--muted);text-align:center;background:rgba(255,255,255,.03)}
-  .footer{padding:26px 0 38px;color:var(--muted);font-size:14px}
-  .footer a{color:#cfe7ff}
-  .hidden{display:none !important}
-  @media (max-width: 1080px){
-    .hero__grid,.two-col,.featured,.grid{grid-template-columns:1fr}
-  }
-  @media (max-width: 640px){
-    .topbar__inner{align-items:flex-start;flex-direction:column}
-    .hero__card,.panel{padding:20px}
-    .hero__stats{grid-template-columns:1fr}
-    .stores{grid-template-columns:1fr}
-  }
-</style></head>
-<body>
-<header class="topbar">
-  <div class="container topbar__inner">
-    <a class="brand" href="${baseUrl}">
-      <div class="brand__mark">C</div>
-      <div class="brand__text"><strong>Chollos al Día</strong><span>Ofertas y chollos</span></div>
-    </a>
-    <div class="topbar__actions">
-      <a class="pill" href="https://t.me/aldiachollos" target="_blank" rel="noreferrer">Telegram</a>
-      <a class="pill pill--accent" href="#ultimas">Ver ofertas</a>
-    </div>
-  </div>
-</header>
+function redirectHtml(to) {
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="robots" content="noindex"><meta http-equiv="refresh" content="0;url=${escapeHtml(to)}"><script>location.replace(${JSON.stringify(to)})</script><title>Redirigiendo</title></head><body><a href="${escapeHtml(to)}">Continuar</a></body></html>`;
+}
 
-<main>
-  <section class="hero">
-    <div class="container hero__grid">
-      <div class="hero__card">
-        <div class="eyebrow">Chollos, ofertas y precio bueno</div>
-        <h1>Ofertas actualizadas cada vez que publicas en Telegram.</h1>
-        <p>Una web rápida, clara y pensada para SEO: imágenes reales, filtros, categorías y acceso directo a cada oferta. Sin ruido, sin relleno, solo chollos que merecen la pena.</p>
-        <div class="hero__cta">
-          <a class="pill pill--accent" href="#ultimas">Ver últimas ofertas</a>
-          <a class="pill" href="https://t.me/aldiachollos" target="_blank" rel="noreferrer">Abrir canal</a>
-        </div>
-        <div class="searchbar" role="search" aria-label="Buscar ofertas">
-          <span style="color:var(--muted);font-weight:900">⌕</span>
-          <input id="search" type="search" placeholder="Busca un producto, tienda o categoría...">
-        </div>
-      </div>
-      <div class="hero__card">
-        <div class="hero__stats">
-          <div class="stat"><strong>${stats.offers}</strong><span>Ofertas publicadas</span></div>
-          <div class="stat"><strong>${stats.categories}</strong><span>Categorías detectadas</span></div>
-          <div class="stat"><strong>${stats.stores}</strong><span>Tiendas seguidas</span></div>
-        </div>
-        <div style="margin-top:14px;color:var(--muted);line-height:1.7">
-          <strong style="color:var(--txt)">Lo mejor:</strong> fotos originales del post, enlace directo, y la web se actualiza sola desde tu canal.
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="section">
-    <div class="container">
-      <div class="section__head">
-        <div>
-          <h2>Filtros rápidos</h2>
-          <p>Filtra por categoría o por tienda.</p>
-        </div>
-      </div>
-      <div class="filters" id="filters">
-        ${categories.map((c, i) => `<button class="filter${i === 0 ? ' is-active' : ''}" data-filter="${slugify(c)}">${escapeHtml(c)}</button>`).join('')}
-      </div>
-    </div>
-  </section>
-
-  <section class="section" id="destacadas">
-    <div class="container">
-      <div class="section__head">
-        <div>
-          <h2>Destacadas</h2>
-          <p>Las 3 más recientes, con imagen y acceso directo.</p>
-        </div>
-      </div>
-      ${featured.length ? `<div class="featured">${featured.map((o) => card(o, true)).join('')}</div>` : '<div class="empty">Aún no hay ofertas importadas. Publica algo en Telegram y actualiza la web.</div><div class="featured">' + [1,2,3].map(() => `<article class="card card--featured"><div class="card__placeholder">Imagen de oferta</div><div class="card__body"><div class="card__meta"><span>Telegram</span><span>Destacada</span></div><h2 class="card__title">Oferta destacada</h2><div class="card__price">-</div><p class="card__desc">En cuanto publiques ofertas con foto en Telegram, aparecerán aquí automáticamente.</p><a class="btn" href="https://t.me/aldiachollos" target="_blank" rel="noreferrer">Abrir canal</a></div></article>`).join('') + '</div>'}
-    </div>
-  </section>
-
-  <section class="section" id="ultimas">
-    <div class="container">
-      <div class="section__head">
-        <div>
-          <h2>Últimas ofertas</h2>
-          <p>Se van cargando desde Telegram.</p>
-        </div>
-      </div>
-      ${latest.length ? `<div class="grid" id="offerGrid">${latest.map((o) => card(o)).join('')}</div>` : '<div class="grid" id="offerGrid">' + [1,2,3,4].map(() => `<article class="card"><div class="card__placeholder">Esperando oferta</div><div class="card__body"><div class="card__meta"><span>Telegram</span><span>Nuevo</span></div><h2 class="card__title">Publica una oferta con foto</h2><div class="card__price">-</div><p class="card__desc">El contenido se importa automáticamente desde tu canal.</p><a class="btn" href="https://t.me/aldiachollos" target="_blank" rel="noreferrer">Abrir canal</a></div></article>`).join('') + '</div>'}
-    </div>
-  </section>
-
-  <section class="section">
-    <div class="container two-col">
-      <div class="panel">
-        <div class="section__head" style="margin-bottom:8px">
-          <div>
-            <h2>Tiendas que seguimos</h2>
-            <p>Las que más chollos suelen dar.</p>
-          </div>
-        </div>
-        <div class="stores">
-          <a class="store" href="/amazon/" aria-label="Amazon"><div><strong>Amazon</strong><span>Ofertas flash y Prime</span></div><span>→</span></a>
-          <a class="store" href="/aliexpress/" aria-label="AliExpress"><div><strong>AliExpress</strong><span>Cupones y descuentos</span></div><span>→</span></a>
-          <a class="store" href="/mediamarkt/" aria-label="MediaMarkt"><div><strong>MediaMarkt</strong><span>Tecnología y hogar</span></div><span>→</span></a>
-          <a class="store" href="/pccomponentes/" aria-label="PcComponentes"><div><strong>PcComponentes</strong><span>PC y gaming</span></div><span>→</span></a>
-        </div>
-      </div>
-      <div class="panel">
-        <div class="section__head" style="margin-bottom:8px">
-          <div>
-            <h2>Preguntas rápidas</h2>
-            <p>Preguntas rápidas sobre la web.</p>
-          </div>
-        </div>
-        <div class="faq">
-          <details open><summary>¿Cada cuánto se actualiza?</summary><p>La web se actualiza sola cuando publicas en Telegram. Las imágenes se copian automáticamente.</p></details>
-          <details><summary>¿Cómo se eligen los chollos?</summary><p>Priorizamos productos con buen precio, tiendas fiables y ofertas que realmente merecen la pena.</p></details>
-          <details><summary>¿Puedo abrir el enlace desde móvil?</summary><p>Sí, cada tarjeta lleva al producto original para comprar al momento.</p></details>
-        </div>
-      </div>
-    </div>
-  </section>
-</main>
-
-<footer class="footer">
-  <div class="container">
-    Web lista • imágenes servidas localmente • sincronizable con Telegram • <a href="/sitemap.xml">sitemap</a>
-    <div style="margin-top:10px;font-size:12px;opacity:.9">Como asociado de Amazon, puedo obtener ingresos por compras válidas.</div>
-  </div>
-</footer>
-
-<script>
-  const filters = Array.from(document.querySelectorAll('.filter'));
-  const cards = Array.from(document.querySelectorAll('.card'));
-  const search = document.getElementById('search');
-  const grid = document.getElementById('offerGrid');
-
-  function applyFilter(filter) {
-    const q = (search?.value || '').trim().toLowerCase();
-    cards.forEach((card) => {
-      const text = (card.dataset.text || '').toLowerCase();
-      const cat = card.dataset.cat || '';
-      const store = card.dataset.store || '';
-      const matchQuery = !q || text.includes(q);
-      const matchFilter = !filter || filter === 'todo' || filter === cat || filter === store;
-      card.classList.toggle('hidden', !(matchQuery && matchFilter));
-    });
-    const visible = cards.filter((card) => !card.classList.contains('hidden'));
-    if (grid) {
-      let empty = document.getElementById('emptyResults');
-      if (!visible.length) {
-        if (!empty) {
-          empty = document.createElement('div');
-          empty.id = 'emptyResults';
-          empty.className = 'empty';
-          empty.textContent = 'No hay resultados con ese filtro.';
-          grid.after(empty);
-        }
-      } else if (empty) {
-        empty.remove();
-      }
-    }
-  }
-
-  filters.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      filters.forEach((b) => b.classList.remove('is-active'));
-      btn.classList.add('is-active');
-      applyFilter(btn.dataset.filter || 'todo');
-    });
-  });
-
-  search?.addEventListener('input', () => {
-    const active = document.querySelector('.filter.is-active');
-    applyFilter(active?.dataset.filter || 'todo');
-  });
-</script>
-</body>
-</html>`;
+function legalPage(kind) {
+  const pages = {
+    contacto: { title: 'Contacto', desc: 'Contacta con Chollos al Día para dudas, ofertas o colaboración.', body: `<h1>Contacto</h1><p>Para consultas sobre ofertas, colaboración o incidencias, puedes escribirnos por Telegram.</p><p><a class="btn btn--primary" href="${telegramUrl}" target="_blank" rel="noreferrer">Contactar por Telegram</a></p><p>No vendemos productos directamente. Redirigimos a tiendas externas como Amazon, AliExpress y otros comercios.</p>` },
+    privacidad: { title: 'Política de privacidad', desc: 'Información básica sobre privacidad en Chollos al Día.', body: '<h1>Política de privacidad</h1><p>Esta web muestra ofertas y enlaces a tiendas externas. No solicitamos datos personales mediante formularios propios.</p><p>Podemos usar servicios técnicos de alojamiento y analítica básica para mantener la web rápida y segura.</p><p>Los enlaces externos pueden aplicar sus propias políticas de privacidad y cookies.</p>' },
+    'aviso-legal': { title: 'Aviso legal y afiliación', desc: 'Aviso legal, afiliación y responsabilidad sobre precios.', body: '<h1>Aviso legal y afiliación</h1><p>Chollos al Día publica ofertas, descuentos y enlaces a tiendas externas. Algunos enlaces son de afiliado.</p><p><strong>Como afiliados, podemos recibir una comisión por compras realizadas desde nuestros enlaces, sin coste adicional para ti.</strong></p><p>Los precios, cupones, stock y condiciones pueden cambiar sin previo aviso. Revisa siempre el precio final en la tienda antes de comprar.</p><p>No somos responsables de la venta, envío, garantía o atención al cliente de los productos enlazados.</p>' }
+  };
+  const p = pages[kind];
+  return layout({ title: `${p.title} | ${brand}`, description: p.desc, canonical: `${baseUrl}/${kind}/`, content: `<main class="wrap"><section class="legal">${p.body}</section></main>` });
+}
 
 fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
 copyDir(path.join(publicDir, 'tg'), path.join(outDir, 'tg'));
-fs.writeFileSync(path.join(outDir, 'index.html'), html);
+fs.writeFileSync(path.join(outDir, 'index.html'), homePage());
 fs.mkdirSync(path.join(outDir, 'go'), { recursive: true });
 fs.writeFileSync(path.join(outDir, 'go', 'index.html'), genericRedirectPage());
 for (const offer of offers) {
@@ -822,13 +310,21 @@ for (const offer of offers) {
   const goPath = path.join(outDir, 'go', offer.slug, 'index.html');
   fs.mkdirSync(path.dirname(goPath), { recursive: true });
   fs.writeFileSync(goPath, redirectPage(offer));
+  if (offer.legacySlug && offer.legacySlug !== offer.slug) {
+    const legacyOfferPath = path.join(outDir, 'oferta', offer.legacySlug, 'index.html');
+    fs.mkdirSync(path.dirname(legacyOfferPath), { recursive: true });
+    fs.writeFileSync(legacyOfferPath, redirectHtml(offer.detailPath));
+    const legacyGoPath = path.join(outDir, 'go', offer.legacySlug, 'index.html');
+    fs.mkdirSync(path.dirname(legacyGoPath), { recursive: true });
+    fs.writeFileSync(legacyGoPath, redirectHtml(offer.goPath));
+  }
 }
-fs.writeFileSync(path.join(outDir, '.nojekyll'), '');
-const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>${baseUrl}</loc><lastmod>${new Date().toISOString()}</lastmod></url>
-</urlset>`;
+for (const p of ['contacto', 'privacidad', 'aviso-legal']) {
+  fs.mkdirSync(path.join(outDir, p), { recursive: true });
+  fs.writeFileSync(path.join(outDir, p, 'index.html'), legalPage(p));
+}
+const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${baseUrl}</loc><lastmod>${new Date().toISOString()}</lastmod></url>\n${offers.map((o) => `  <url><loc>${baseUrl}${o.detailPath}</loc><lastmod>${new Date().toISOString()}</lastmod></url>`).join('\n')}\n  <url><loc>${baseUrl}/contacto/</loc></url>\n  <url><loc>${baseUrl}/privacidad/</loc></url>\n  <url><loc>${baseUrl}/aviso-legal/</loc></url>\n</urlset>`;
 fs.writeFileSync(path.join(outDir, 'sitemap.xml'), sitemap);
 fs.writeFileSync(path.join(outDir, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${baseUrl}/sitemap.xml\n`);
-if (hostName) fs.writeFileSync(path.join(outDir, 'CNAME'), `${hostName}\n`);
+try { fs.writeFileSync(path.join(outDir, 'CNAME'), `${new URL(baseUrl).hostname}\n`); } catch {}
 console.log(`Built ${offers.length} offers.`);
