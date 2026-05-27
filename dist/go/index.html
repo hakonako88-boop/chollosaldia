@@ -10,7 +10,7 @@
 <body>
   <div class="box"><h1>Abriendo oferta…</h1><p class="muted">Intentando abrir la app de la tienda.</p><a class="btn" id="open" href="https://t.me/aldiachollos">Abrir oferta</a></div>
   <script>
-    const params = new URLSearchParams(location.search);
+    const params = new URLSearchParams(location.search || location.hash.replace(/^#/, '?'));
     const directUrl = params.get('url') || params.get('u') || 'https://t.me/aldiachollos';
     function appIntentForUrl(input) {
       try {
