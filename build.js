@@ -452,7 +452,7 @@ function detailPage(o) {
         </div>
       </div>
     </div>
-    <div style="margin-top:18px;font-size:12px;color:#99abc5;opacity:.9">En calidad de Afiliado de Amazon, obtengo ingresos por las compras adscritas que cumplen los requisitos aplicables.</div>
+    <div style="margin-top:18px;font-size:12px;color:#99abc5;opacity:.9">Como asociado de Amazon, puedo obtener ingresos por compras válidas.</div>
   </div>
 </body>
 </html>`;
@@ -678,7 +678,7 @@ ${jsonLd}
 <footer class="footer">
   <div class="container">
     Web lista • imágenes servidas localmente • sincronizable con Telegram • <a href="/sitemap.xml">sitemap</a>
-    <div style="margin-top:10px;font-size:12px;opacity:.9">En calidad de Afiliado de Amazon, obtengo ingresos por las compras adscritas que cumplen los requisitos aplicables.</div>
+    <div style="margin-top:10px;font-size:12px;opacity:.9">Como asociado de Amazon, puedo obtener ingresos por compras válidas.</div>
   </div>
 </footer>
 
