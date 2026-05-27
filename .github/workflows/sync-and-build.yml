@@ -23,12 +23,6 @@ jobs:
       - name: Install
         run: npm install --ignore-scripts
 
-      - name: Sync from Telegram
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
-        run: node sync-from-telegram.js
-
       - name: Build
         env:
           SITE_URL: ${{ secrets.SITE_URL }}

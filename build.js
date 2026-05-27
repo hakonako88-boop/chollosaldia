@@ -32,6 +32,41 @@ function fixText(s = '') {
     .replace(/lavavajillas?\s+Fairy\s+All\s+in\s+One/gi, 'lavavajillas Fairy All in One');
 }
 
+function stripMediaLines(s = '') {
+  return String(s)
+    .split(/\r?\n/)
+    .filter((line) => {
+      const t = line.trim();
+      return t && !/^media:media:\/\//i.test(t) && !/^media:\/\//i.test(t);
+    })
+    .join('\n');
+}
+
+function normalizeBodyText(s = '') {
+  return stripMediaLines(fixText(s))
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractPriceFromText(s = '') {
+  const text = String(s);
+  const labeled = text.match(/(?:precio(?:\s+con\s+cup[oó]n)?|precio oferta|precio final|precio)\D{0,40}(\d{1,4}(?:[.,]\d{2})?)\s*€/i);
+  if (labeled) return `${labeled[1].replace('.', ',')}€`;
+  const plain = text.match(/(\d{1,4}(?:[.,]\d{2})?)\s*€/);
+  return plain ? `${plain[1].replace('.', ',')}€` : '';
+}
+
+function deriveTitle(o = {}) {
+  const candidates = [o.text, o.description, o.title]
+    .map((v) => normalizeBodyText(v || ''))
+    .filter(Boolean);
+  for (const candidate of candidates) {
+    const line = candidate.split(/\n/).map((x) => x.trim()).find(Boolean) || '';
+    if (!/^media:/i.test(line) && line.length > 3) return line.slice(0, 120);
+  }
+  return normalizeBodyText(o.title || o.description || o.text || 'Oferta').slice(0, 120) || 'Oferta';
+}
+
 function slugify(s = '') {
   return String(s)
     .toLowerCase()
@@ -135,7 +170,9 @@ async function resolveOfferUrl(rawUrl = '') {
 const rawOffers = readJson(path.join(dataDir, 'offers.json'), []);
 
 function isBrokenOffer(o = {}) {
-  const text = `${o.title || ''} ${o.description || ''} ${o.text || ''}`.toLowerCase();
+  const text = normalizeBodyText(`${o.title || ''} ${o.description || ''} ${o.text || ''}`).toLowerCase();
+  const words = text.split(/\s+/).filter(Boolean);
+  const uniqueWords = new Set(words).size;
   return (
     !o.message_id ||
     /^la imagen es un/i.test(String(o.title || '')) ||
@@ -144,7 +181,8 @@ function isBrokenOffer(o = {}) {
     /^si quieres, tambien puedo/i.test(text) ||
     /transcribir el texto exacto/i.test(text) ||
     /redactarlo con tono más persuasivo/i.test(text) ||
-    /redactarlo con tono mas persuasivo/i.test(text)
+    /redactarlo con tono mas persuasivo/i.test(text) ||
+    (!o.url && !o.image && (words.length < 12 || uniqueWords < 8))
   );
 }
 
@@ -154,7 +192,17 @@ const offers = Array.from(
       .slice()
       .sort((a, b) => (b.date || 0) - (a.date || 0))
       .filter((o) => !isBrokenOffer(o))
-      .map((o) => [String(o.message_id), o])
+      .map((o) => {
+        const text = normalizeBodyText(o.text || o.description || o.title || '');
+        const title = deriveTitle(o);
+        const priceFromText = extractPriceFromText(text);
+        const rawPrice = String(o.price || '').trim();
+        const price = priceFromText || (/\d/.test(rawPrice) && rawPrice && text.includes(rawPrice) ? rawPrice : '');
+        const description = text || normalizeBodyText(o.description || o.title || '');
+        const url = o.url || '';
+        const signature = [title, description, price, o.store || '', url].join('|').toLowerCase();
+        return [signature, { ...o, title, description, price, text: description }];
+      })
   ).values()
 ).map((o) => {
   const category = inferCategory(`${o.title || ''} ${o.description || ''}`, o.store || '');

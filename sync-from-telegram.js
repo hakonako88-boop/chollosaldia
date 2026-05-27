@@ -16,7 +16,13 @@ function normalizeText(s = '') {
     .replace(/\u0000/g, '')
     .replace(/\r\n/g, '\n')
     .replace(/\uFFFD/g, '€')
-    .replace(/�/g, '€');
+    .replace(/�/g, '€')
+    .split(/\n/)
+    .filter((line) => {
+      const t = line.trim();
+      return t && !/^media:media:\/\//i.test(t) && !/^media:\/\//i.test(t);
+    })
+    .join('\n');
 }
 
 function extractUrl(text) {
@@ -34,12 +40,19 @@ function extractButtonUrl(message = {}) {
 }
 
 function firstLine(text) {
-  return (String(text).split(/\r?\n/).find(Boolean) || 'Oferta').slice(0, 120);
+  return (
+    String(text)
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line && !/^media:/i.test(line)) || 'Oferta'
+  ).slice(0, 120);
 }
 
 function extractPrice(text) {
-  const m = String(text).match(/([0-9]+,[0-9]{2}|[0-9]+\.[0-9]{2}|[0-9]+)/);
-  return m ? `${m[1]}€` : '';
+  const labeled = String(text).match(/(?:precio(?:\s+con\s+cup[oó]n)?|precio oferta|precio final|precio)\D{0,40}([0-9]+,[0-9]{2}|[0-9]+\.[0-9]{2}|[0-9]+)\s*€/i);
+  if (labeled) return `${labeled[1]}€`;
+  const plain = String(text).match(/([0-9]+,[0-9]{2}|[0-9]+\.[0-9]{2})\s*€/);
+  return plain ? `${plain[1]}€` : '';
 }
 
 const env = {
@@ -74,7 +87,9 @@ for (const u of j.result || []) {
 
   const text = normalizeText(m.caption || m.text || '');
   const hasPhoto = Array.isArray(m.photo) && m.photo.length > 0;
-  if (!text && !hasPhoto) continue;
+  // The website is built from real channel offer posts only: one photo + one caption.
+  // This avoids importing assistant/status messages or broken MEDIA placeholder text.
+  if (!text || !hasPhoto) continue;
 
   // Deleted/bad Telegram posts can remain in getUpdates history; never import them.
   if ([3558, 3568, 3570].includes(m.message_id)) continue;
@@ -84,6 +99,8 @@ for (const u of j.result || []) {
   if (/^la imagen es un/i.test(trimmed)) continue;
   if (/^si quieres, también puedo/i.test(trimmed)) continue;
   if (/^si quieres, tambien puedo/i.test(trimmed)) continue;
+  if (/^media:/i.test(trimmed)) continue;
+  if (!/ofert[oó]n|chollo|precio|amazon|aliexpress/i.test(trimmed)) continue;
   if (/^🛒\s*🔥\s*ofertón amazon\s*🔥\s*logitech g g305 lightspeed/i.test(trimmed)) continue;
 
   const photo = (m.photo && m.photo[m.photo.length - 1]?.file_id) || null;
@@ -117,7 +134,12 @@ for (const u of j.result || []) {
 }
 
 const deduped = Array.from(
-  new Map(offers.map((o) => [String(o.message_id), o])).values()
+  new Map(
+    offers.map((o) => {
+      const signature = [o.title, o.description, o.price, o.store, o.url].join('|').toLowerCase();
+      return [signature, o];
+    })
+  ).values()
 ).filter((o) => o.title || o.image);
 
 fs.mkdirSync(path.dirname(out), { recursive: true });
