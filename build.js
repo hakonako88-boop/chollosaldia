@@ -250,6 +250,54 @@ function offerCard(o, featuredCard = false) {
   </article>`;
 }
 
+function offerCharacteristics(o) {
+  const text = `${o.title} ${o.description} ${o.category} ${o.store}`.toLowerCase();
+  const items = [];
+  if (o.price) items.push(`Precio visto: ${o.price}`);
+  if (o.previousPrice) items.push(`Precio anterior aproximado: ${o.previousPrice}`);
+  if (o.discount) items.push(`Descuento estimado: ${o.discount}`);
+  items.push(`Tienda: ${o.store}`);
+  items.push(`Categoría: ${o.category}`);
+  if (/amazon/i.test(o.store)) items.push('Compra mediante Amazon con enlace de afiliado');
+  if (/aliexpress/i.test(o.store)) items.push('Compra mediante AliExpress; revisa cupones y envío');
+  if (/pilas|bater/i.test(text)) items.push('Producto útil para mandos, básculas, relojes y dispositivos pequeños');
+  if (/diana|dardos|deporte/i.test(text)) items.push('Producto orientado a ocio, deporte o entretenimiento en casa');
+  if (/rat[oó]n|gaming|lightspeed|dpi/i.test(text)) items.push('Accesorio gaming o de ordenador');
+  if (/móvil|movil|poco|smartphone/i.test(text)) items.push('Producto tecnológico de uso diario');
+  if (/vileda|fregona|limpieza|hogar/i.test(text)) items.push('Producto de limpieza y hogar');
+  return Array.from(new Set(items)).slice(0, 7);
+}
+
+function offerPros(o) {
+  const text = `${o.title} ${o.description} ${o.category} ${o.store}`.toLowerCase();
+  const items = [];
+  if (o.price) items.push('Precio claro y visible antes de entrar a la tienda.');
+  if (o.discount) items.push('Tiene descuento frente al precio anterior detectado.');
+  if (/amazon/i.test(o.store)) items.push('Amazon suele ofrecer compra rápida y gestión sencilla de pedidos.');
+  if (/aliexpress/i.test(o.store)) items.push('Puede salir muy bien de precio si el cupón sigue activo.');
+  if (/pilas|bater/i.test(text)) items.push('Artículo práctico para tener de repuesto en casa.');
+  if (/gaming|rat[oó]n|ps5|xbox|playstation/i.test(text)) items.push('Interesante para gaming o entretenimiento.');
+  if (/hogar|vileda|limpieza|fregona|diana/i.test(text)) items.push('Útil para casa y con compra sencilla.');
+  if (!items.length) items.push('Oferta interesante si buscabas este tipo de producto.');
+  return Array.from(new Set(items)).slice(0, 5);
+}
+
+function offerCons(o) {
+  const text = `${o.title} ${o.description} ${o.category} ${o.store}`.toLowerCase();
+  const items = ['El precio y el stock pueden cambiar en cualquier momento.'];
+  if (!o.previousPrice) items.push('No siempre hay precio anterior fiable para comparar el descuento.');
+  if (/aliexpress/i.test(o.store)) items.push('El envío puede tardar más que en tiendas nacionales.');
+  if (/amazon/i.test(o.store)) items.push('Conviene comprobar vendedor, envío y precio final antes de pagar.');
+  if (/móvil|movil|smartphone|poco/i.test(text)) items.push('Revisa versión, memoria, garantía y compatibilidad antes de comprar.');
+  if (/ropa|moda|zapatilla/i.test(text)) items.push('Comprueba bien talla, color y política de devolución.');
+  if (/diana|mueble|hogar|vileda/i.test(text)) items.push('Revisa medidas y características para asegurar que encaja con lo que necesitas.');
+  return Array.from(new Set(items)).slice(0, 5);
+}
+
+function bulletList(items) {
+  return `<ul>${items.map((x) => `<li>${escapeHtml(x)}</li>`).join('')}</ul>`;
+}
+
 function homePage() {
   const content = `<main>
     <section class="hero"><div class="wrap hero__grid"><div><span class="kicker">🔥 Chollos diarios · Amazon · AliExpress · Más tiendas</span><h1>Ofertas claras para comprar al mejor precio.</h1><p>Encuentra descuentos interesantes en tecnología, hogar, supermercado, moda y más. Publicamos chollos rápidos, con enlaces de afiliado preparados para comprar sin complicaciones.</p><div class="hero__actions"><a class="btn btn--primary" href="#destacadas">Ver ofertas destacadas</a><a class="btn btn--ghost" href="${telegramUrl}" target="_blank" rel="noreferrer">Recibir chollos en Telegram</a></div></div><div class="searchbox"><label for="search">Buscar ofertas</label><input class="search" id="search" placeholder="Busca Amazon, AliExpress, tecnología, hogar..." /><div class="trust"><div>✅ Ofertas revisadas</div><div>⚡ Web rápida</div><div>📲 Telegram diario</div></div></div></div></section>
@@ -264,9 +312,13 @@ function homePage() {
 
 function detailPage(o) {
   const related = relatedFor(o);
+  const chars = offerCharacteristics(o);
+  const pros = offerPros(o);
+  const cons = offerCons(o);
   const productJsonLd = `<script type="application/ld+json">${JSON.stringify({ '@context': 'https://schema.org', '@type': 'Product', name: o.title, image: o.image ? `${baseUrl}${o.image}` : undefined, description: o.description, offers: { '@type': 'Offer', priceCurrency: 'EUR', price: parseEuro(o.price) || undefined, url: `${baseUrl}${o.goPath}`, availability: 'https://schema.org/InStock' } })}</script>`;
   const content = `<main class="detailHero"><div class="wrap"><div class="detail"><div class="panel">${o.image ? `<img class="detail__img" src="${escapeHtml(o.image)}" alt="${escapeHtml(o.title)}">` : '<div class="detail__img"></div>'}</div><article class="panel"><div class="meta"><span class="tag">${escapeHtml(o.store)}</span><span class="tag">${escapeHtml(o.category)}</span><span class="tag">${escapeHtml(o.ago)}</span>${o.discount ? `<span class="tag">${escapeHtml(o.discount)}</span>` : ''}</div><h1>${escapeHtml(o.title)}</h1><div class="priceRow">${o.price ? `<span class="price">${escapeHtml(o.price)}</span>` : '<span class="price">Ver precio</span>'}${o.previousPrice ? `<span class="old">${escapeHtml(o.previousPrice)}</span>` : ''}</div><p>${escapeHtml(o.description)}</p><a class="btn btn--primary" href="${escapeHtml(o.goPath)}" target="_blank" rel="noreferrer">Ver oferta</a><p class="notice">El precio y la disponibilidad pueden cambiar. Revisa siempre el precio final en la tienda antes de comprar.</p><p class="meta">Como afiliados, podemos recibir una comisión por compras realizadas desde nuestros enlaces, sin coste adicional para ti.</p></article></div>
-    <section class="section"><div class="section__head"><div><h2>Ventajas de esta oferta</h2><p>Información rápida para decidir mejor.</p></div></div><div class="stores"><div class="store"><strong>Buen precio para</strong><span>${escapeHtml(o.category.toLowerCase())}</span></div><div class="store"><strong>Tienda</strong><span>${escapeHtml(o.store)}</span></div><div class="store"><strong>Publicado</strong><span>${escapeHtml(o.dateLabel || o.ago)}</span></div><div class="store"><strong>Compra rápida</strong><span>Botón con enlace de afiliado</span></div><div class="store"><strong>Recomendación</strong><span>Compara precio final y envío</span></div></div></section>
+    <section class="section"><div class="section__head"><div><h2>Características, pros y contras</h2><p>Resumen rápido para decidir mejor antes de comprar.</p></div></div><div class="stores"><div class="store"><strong>Características</strong>${bulletList(chars)}</div><div class="store"><strong>Pros</strong>${bulletList(pros)}</div><div class="store"><strong>Contras</strong>${bulletList(cons)}</div></div></section>
+    <section class="section"><div class="section__head"><div><h2>Datos de la oferta</h2><p>Información rápida de publicación y compra.</p></div></div><div class="stores"><div class="store"><strong>Buen precio para</strong><span>${escapeHtml(o.category.toLowerCase())}</span></div><div class="store"><strong>Tienda</strong><span>${escapeHtml(o.store)}</span></div><div class="store"><strong>Publicado</strong><span>${escapeHtml(o.dateLabel || o.ago)}</span></div><div class="store"><strong>Compra rápida</strong><span>Botón con enlace de afiliado</span></div><div class="store"><strong>Recomendación</strong><span>Compara precio final y envío</span></div></div></section>
     ${related.length ? `<section class="section"><div class="section__head"><div><h2>Ofertas relacionadas</h2><p>Más chollos similares que pueden interesarte.</p></div></div><div class="related">${related.map((x) => offerCard(x)).join('')}</div></section>` : ''}
     </div></main>`;
   return layout({ title: `${o.title} | Oferta en ${o.store}`, description: `${o.title}. ${o.price ? `Precio visto: ${o.price}. ` : ''}Chollo publicado en Chollos al Día.`, canonical: `${baseUrl}${o.detailPath}`, content, extraHead: productJsonLd });
