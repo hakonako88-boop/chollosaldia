@@ -251,21 +251,54 @@ function offerCard(o, featuredCard = false) {
 }
 
 function offerCharacteristics(o) {
-  const text = `${o.title} ${o.description} ${o.category} ${o.store}`.toLowerCase();
+  const text = `${o.title} ${o.description}`.toLowerCase();
   const items = [];
-  if (o.price) items.push(`Precio visto: ${o.price}`);
-  if (o.previousPrice) items.push(`Precio anterior aproximado: ${o.previousPrice}`);
-  if (o.discount) items.push(`Descuento estimado: ${o.discount}`);
-  items.push(`Tienda: ${o.store}`);
-  items.push(`Categoría: ${o.category}`);
-  if (/amazon/i.test(o.store)) items.push('Compra mediante Amazon con enlace de afiliado');
-  if (/aliexpress/i.test(o.store)) items.push('Compra mediante AliExpress; revisa cupones y envío');
-  if (/pilas|bater/i.test(text)) items.push('Producto útil para mandos, básculas, relojes y dispositivos pequeños');
-  if (/diana|dardos|deporte/i.test(text)) items.push('Producto orientado a ocio, deporte o entretenimiento en casa');
-  if (/rat[oó]n|gaming|lightspeed|dpi/i.test(text)) items.push('Accesorio gaming o de ordenador');
-  if (/móvil|movil|poco|smartphone/i.test(text)) items.push('Producto tecnológico de uso diario');
-  if (/vileda|fregona|limpieza|hogar/i.test(text)) items.push('Producto de limpieza y hogar');
-  return Array.from(new Set(items)).slice(0, 7);
+  if (/cr2032|bot[oó]n|pilas|bater/i.test(text)) {
+    items.push('Pack de pilas de botón CR2032 de litio.');
+    items.push('Formato de 3V para dispositivos pequeños.');
+    items.push('Útiles para mandos, básculas, relojes, placas y sensores compatibles.');
+  }
+  if (/diana|dardos|sisal/i.test(text)) {
+    items.push('Mueble para diana con puerta/cabina de almacenamiento.');
+    items.push('Incluye diana y 6 dardos con punta de acero.');
+    items.push('Fibra de sisal autorreparable para uso recreativo.');
+  }
+  if (/logitech|g305|lightspeed|rat[oó]n|dpi|hero/i.test(text)) {
+    items.push('Ratón inalámbrico gaming Logitech G305 LIGHTSPEED.');
+    items.push('Sensor HERO de alta precisión.');
+    items.push('Diseño ligero con botones programables.');
+  }
+  if (/kingdom come|ps5|playstation/i.test(text)) {
+    items.push('Juego físico o digital para PlayStation 5, según disponibilidad en tienda.');
+    items.push('Título de rol y aventura para un jugador.');
+    items.push('Producto pensado para consola PS5.');
+  }
+  if (/gillette|beard|trimmer|recortadora|barba/i.test(text)) {
+    items.push('Recortadora de barba para cuidado personal.');
+    items.push('Incluye peines o accesorios para distintas longitudes, según pack.');
+    items.push('Diseñada para perfilar y mantener la barba en casa.');
+  }
+  if (/vileda|turbo smart|fregona|cubo|escurridor/i.test(text)) {
+    items.push('Sistema de limpieza con fregona y cubo escurridor.');
+    items.push('Pensado para limpieza rápida de suelos en casa.');
+    items.push('Formato cómodo para escurrir sin agacharse demasiado.');
+  }
+  if (/poco|smartphone|m[oó]vil|versi[oó]n global/i.test(text)) {
+    items.push('Smartphone en versión global, según información de la oferta.');
+    items.push('Producto tecnológico para uso diario.');
+    items.push('Conviene revisar memoria, conectividad y garantía antes de comprar.');
+  }
+  if (/lomo|embuchado|gran reserva/i.test(text)) {
+    items.push('Producto alimentario tipo lomo embuchado gran reserva.');
+    items.push('Formato aproximado de 800 g, según la oferta.');
+    items.push('Pensado para consumo en casa, aperitivos o tablas de embutido.');
+  }
+  if (!items.length) {
+    items.push('Artículo de la categoría indicada en la oferta.');
+    items.push('Revisa en la tienda el modelo exacto, medidas y contenido del pack.');
+    items.push('Compra recomendada solo si encaja con lo que necesitas.');
+  }
+  return Array.from(new Set(items)).slice(0, 6);
 }
 
 function offerPros(o) {
