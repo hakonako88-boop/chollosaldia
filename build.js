@@ -194,7 +194,7 @@ const offers = Array.from(
       .filter((o) => !isBrokenOffer(o))
       .map((o) => {
         const text = normalizeBodyText(o.text || o.description || o.title || '');
-        const title = deriveTitle(o);
+        const title = normalizeBodyText(o.title || '') || deriveTitle(o);
         const priceFromText = extractPriceFromText(text);
         const rawPrice = String(o.price || '').trim();
         const price = priceFromText || (/\d/.test(rawPrice) && rawPrice && text.includes(rawPrice) ? rawPrice : '');
@@ -221,7 +221,10 @@ const offers = Array.from(
 await Promise.all(
   offers.map(async (offer) => {
     const resolved = await resolveOfferUrl(offer.url);
-    offer.url = appIntentForUrl(resolved);
+    offer.url = resolved;
+    offer.directUrl = resolved;
+    offer.appUrl = appIntentForUrl(resolved);
+    offer.goPath = `/go/${offer.slug}/`;
     return offer;
   })
 );
@@ -287,7 +290,7 @@ function card(o, featuredCard = false) {
   const title = escapeHtml(fixText(o.title || 'Oferta'));
   const price = escapeHtml(fixText(o.price || ''));
   const detailUrl = escapeHtml(o.detailPath || '#');
-  const offerUrl = escapeHtml(o.url || o.detailPath || '#');
+  const offerUrl = escapeHtml(o.goPath || o.url || o.detailPath || '#');
   const image = o.image
     ? `<img class="card__img" src="${escapeHtml(o.image)}" alt="${title}" loading="lazy">`
     : `<div class="card__placeholder">Sin imagen</div>`;
@@ -377,7 +380,7 @@ function characteristics(o) {
 function detailPage(o) {
   const title = escapeHtml(fixText(o.title || 'Oferta'));
   const image = o.image ? `<img class="detail__img" src="${escapeHtml(o.image)}" alt="${title}">` : '<div class="detail__img detail__placeholder">Sin imagen</div>';
-  const buyUrl = escapeHtml(appIntentForUrl(o.url || 'https://t.me/aldiachollos'));
+  const buyUrl = escapeHtml(o.goPath || o.url || 'https://t.me/aldiachollos');
   const chars = characteristics(o);
   const pros = summarizePros(o);
   const cons = summarizeCons(o);
@@ -454,6 +457,45 @@ function detailPage(o) {
     </div>
     <div style="margin-top:18px;font-size:12px;color:#99abc5;opacity:.9">Como asociado de Amazon, puedo obtener ingresos por compras válidas.</div>
   </div>
+</body>
+</html>`;
+}
+
+function redirectPage(o) {
+  const title = escapeHtml(fixText(o.title || 'Oferta'));
+  const directUrl = o.directUrl || o.url || 'https://t.me/aldiachollos';
+  const appUrl = o.appUrl || appIntentForUrl(directUrl);
+  const directJson = JSON.stringify(directUrl);
+  const appJson = JSON.stringify(appUrl);
+  const directHref = escapeHtml(directUrl);
+  return `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Abriendo oferta | Chollos al Día</title>
+  <style>
+    body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:#07111d;color:#e9f2ff;text-align:center;padding:24px}
+    .box{max-width:520px;background:#0f1a2d;border:1px solid #20314c;border-radius:24px;padding:28px;box-shadow:0 12px 40px rgba(0,0,0,.28)}
+    h1{margin:0 0 12px;font-size:28px}.muted{color:#99abc5;line-height:1.5}.btn{display:inline-block;margin-top:18px;padding:14px 18px;border-radius:14px;background:linear-gradient(135deg,#ffb000,#ff8a00);color:#111;font-weight:900;text-decoration:none}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>Abriendo Amazon…</h1>
+    <p class="muted">${title}</p>
+    <p class="muted">Si no se abre la app automáticamente, pulsa el botón.</p>
+    <a class="btn" id="open" href="${directHref}" rel="noreferrer">Abrir oferta</a>
+  </div>
+  <script>
+    const directUrl = ${directJson};
+    const appUrl = ${appJson};
+    const open = document.getElementById('open');
+    open.href = appUrl;
+    window.location.href = appUrl;
+    setTimeout(() => { open.href = directUrl; }, 1800);
+  </script>
 </body>
 </html>`;
 }
@@ -739,6 +781,9 @@ for (const offer of offers) {
   const pagePath = path.join(outDir, 'oferta', offer.slug, 'index.html');
   fs.mkdirSync(path.dirname(pagePath), { recursive: true });
   fs.writeFileSync(pagePath, detailPage(offer));
+  const goPath = path.join(outDir, 'go', offer.slug, 'index.html');
+  fs.mkdirSync(path.dirname(goPath), { recursive: true });
+  fs.writeFileSync(goPath, redirectPage(offer));
 }
 fs.writeFileSync(path.join(outDir, '.nojekyll'), '');
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
