@@ -19,7 +19,7 @@ test("renders the ChollosAlDía storefront and SEO metadata", async () => {
   assert.match(html, /Menos precio/);
   assert.match(html, /Chollos de hoy/);
   assert.match(html, /application\/ld\+json/);
-  assert.match(html, /rel="canonical" href="https:\/\/chollosaldia\.es"/);
+  assert.match(html, /rel="canonical" href="https:\/\/chollosaldia\.com"/);
   assert.match(html, /rel="nofollow sponsored noreferrer"/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/);
 });

@@ -117,7 +117,7 @@ export function DealExplorer() {
       <div className="ticker" aria-label="Aviso"><span>🔥 CHOLLOS NUEVOS CADA DÍA</span><span>Precios comprobados antes de publicar</span><span>Enlaces directos y cupones claros</span></div>
       <header className="header shell">
         <a className="brand" href="#inicio" aria-label="ChollosAlDía, inicio"><span className="brandMark">%</span><span>chollos<span>al</span>día</span></a>
-        <nav aria-label="Navegación principal"><a href="#chollos">Chollos</a><a href="#como-funciona">Cómo funciona</a><a className="telegram" href="https://t.me/chollosaldia" target="_blank" rel="noreferrer">Telegram ↗</a></nav>
+        <nav aria-label="Navegación principal"><a href="#chollos">Chollos</a><a href="#como-funciona">Cómo funciona</a><a className="telegram" href="https://t.me/aldiachollos" target="_blank" rel="noreferrer">Telegram ↗</a></nav>
       </header>
 
       <section className="hero shell" id="inicio">
@@ -125,7 +125,7 @@ export function DealExplorer() {
           <p className="eyebrow"><span /> Seleccionados por personas, no por ruido</p>
           <h1>Menos precio.<br/><em>Más alegría.</em></h1>
           <p className="lede">Rastreando descuentos para enseñarte solo las ofertas que de verdad merecen la pena. Sin rodeos y con el ahorro bien claro.</p>
-          <div className="heroActions"><a className="primaryButton" href="#chollos">Ver chollos de hoy <span>↓</span></a><a className="textLink" href="https://t.me/chollosaldia" target="_blank" rel="noreferrer">Recibir alertas en Telegram ↗</a></div>
+          <div className="heroActions"><a className="primaryButton" href="#chollos">Ver chollos de hoy <span>↓</span></a><a className="textLink" href="https://t.me/aldiachollos" target="_blank" rel="noreferrer">Recibir alertas en Telegram ↗</a></div>
           <div className="trust"><span>✓ Selección diaria</span><span>✓ Cupones visibles</span><span>✓ Sin coste para ti</span></div>
         </div>
         <aside className="heroDeal" aria-label="Resumen del ahorro">
@@ -160,12 +160,12 @@ export function DealExplorer() {
 
       <section className="how shell" id="como-funciona"><div><p className="eyebrow"><span /> Cero complicaciones</p><h2>Nosotros buscamos.<br/>Tú te llevas el chollo.</h2></div><ol><li><b>01</b><div><strong>Rastreamos</strong><p>Detectamos bajadas de precio y cupones en tiendas de confianza.</p></div></li><li><b>02</b><div><strong>Revisamos</strong><p>Comprobamos que el ahorro sea real y explicamos cómo conseguirlo.</p></div></li><li><b>03</b><div><strong>Te avisamos</strong><p>Publicamos en la web y enviamos la alerta al canal de Telegram.</p></div></li></ol></section>
 
-      <section className="telegramCta"><div className="shell"><div><span className="paperPlane">➤</span><p className="eyebrow">Antes que nadie</p><h2>Los mejores chollos<br/>vuelan por Telegram.</h2></div><a href="https://t.me/chollosaldia" target="_blank" rel="noreferrer">Unirme gratis <span>↗</span></a></div></section>
+      <section className="telegramCta"><div className="shell"><div><span className="paperPlane">➤</span><p className="eyebrow">Antes que nadie</p><h2>Los mejores chollos<br/>vuelan por Telegram.</h2></div><a href="https://t.me/aldiachollos" target="_blank" rel="noreferrer">Unirme gratis <span>↗</span></a></div></section>
 
       <section className="faq shell"><p className="eyebrow"><span /> Lo importante</p><h2>Preguntas frecuentes</h2><details><summary>¿Cómo seleccionáis los chollos?<span>+</span></summary><p>Revisamos el descuento, el precio anterior, la utilidad del producto y la disponibilidad antes de publicar.</p></details><details><summary>¿Los precios pueden cambiar?<span>+</span></summary><p>Sí. Los precios y cupones dependen de cada tienda y pueden cambiar o agotarse sin previo aviso.</p></details><details><summary>¿Comprar desde vuestros enlaces cuesta más?<span>+</span></summary><p>No. Podemos recibir una comisión por compra, sin coste adicional para ti. Esto ayuda a mantener el proyecto.</p></details></section>
 
       <section className="config" id="configuracion"><div className="shell"><span>⚙</span><div><strong>Lista para conectar tus afiliados</strong><p>La web ya admite ofertas reales y publicación automática. Solo faltan tus identificadores y claves privadas.</p></div></div></section>
-      <footer><div className="shell footerGrid"><div><a className="brand" href="#inicio"><span className="brandMark">%</span><span>chollos<span>al</span>día</span></a><p>Tu radar diario de ofertas que sí merecen la pena.</p></div><div><strong>Explora</strong><a href="#chollos">Últimos chollos</a><a href="#como-funciona">Cómo funciona</a><a href="https://t.me/chollosaldia">Canal de Telegram</a></div><div><strong>Legal</strong><a href="/aviso-legal">Aviso legal</a><a href="/privacidad">Privacidad</a><a href="/afiliacion">Política de afiliación</a></div></div><div className="shell footnote"><span>© {new Date().getFullYear()} ChollosAlDía</span><p>Como afiliado, ChollosAlDía puede obtener ingresos por las compras adscritas que cumplen los requisitos aplicables. El precio para ti no cambia.</p></div></footer>
+      <footer><div className="shell footerGrid"><div><a className="brand" href="#inicio"><span className="brandMark">%</span><span>chollos<span>al</span>día</span></a><p>Tu radar diario de ofertas que sí merecen la pena.</p></div><div><strong>Explora</strong><a href="#chollos">Últimos chollos</a><a href="#como-funciona">Cómo funciona</a><a href="https://t.me/aldiachollos">Canal de Telegram</a></div><div><strong>Legal</strong><a href="/aviso-legal">Aviso legal</a><a href="/privacidad">Privacidad</a><a href="/afiliacion">Política de afiliación</a></div></div><div className="shell footnote"><span>© {new Date().getFullYear()} ChollosAlDía</span><p>Como afiliado, ChollosAlDía puede obtener ingresos por las compras adscritas que cumplen los requisitos aplicables. El precio para ti no cambia.</p></div></footer>
     </main>
   );
 }

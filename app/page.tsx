@@ -12,10 +12,10 @@ const websiteSchema = {
   "@context": "https://schema.org",
   "@type": "WebSite",
   name: "ChollosAlDía",
-  url: "https://chollosaldia.es",
+  url: "https://chollosaldia.com",
   potentialAction: {
     "@type": "SearchAction",
-    target: "https://chollosaldia.es/?q={search_term_string}",
+    target: "https://chollosaldia.com/?q={search_term_string}",
     "query-input": "required name=search_term_string",
   },
 };

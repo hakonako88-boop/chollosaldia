@@ -6,7 +6,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://chollosaldia.es"),
+  metadataBase: new URL("https://chollosaldia.com"),
   title: { default: "ChollosAlDía | Ofertas y cupones que merecen la pena", template: "%s | ChollosAlDía" },
   description: "Ofertas, cupones y bajadas de precio seleccionadas a diario en Amazon, AliExpress y más tiendas.",
   applicationName: "ChollosAlDía",
