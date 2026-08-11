@@ -17,6 +17,9 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
     steps:
       - name: Descargar web
         uses: actions/checkout@v4
@@ -31,14 +34,11 @@ jobs:
         run: npm ci
 
       - name: Sincronizar ofertas de Telegram
-        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' }}
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
+        if: ${{ env.TELEGRAM_BOT_TOKEN != '' }}
         run: npm run sync
 
       - name: Guardar ofertas nuevas
-        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' }}
+        if: ${{ env.TELEGRAM_BOT_TOKEN != '' }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
