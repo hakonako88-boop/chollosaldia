@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import rawOffers from "../../data/offers.json";
 
 export type Deal = {
   id: string;
@@ -17,20 +18,72 @@ export type Deal = {
   isDemo?: boolean;
 };
 
-const demoDeals: Deal[] = [
-  { id: "demo-1", title: "Auriculares inalámbricos con cancelación de ruido", store: "Amazon", category: "Tecnología", price: 29.99, oldPrice: 59.99, coupon: "SONIDO10", imageUrl: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=900&q=80", affiliateUrl: "#configuracion", badge: "Top del día", verifiedAt: "Demo", isDemo: true },
-  { id: "demo-2", title: "Robot aspirador inteligente con mapeo", store: "AliExpress", category: "Hogar", price: 109.9, oldPrice: 189.9, imageUrl: "https://images.unsplash.com/photo-1558317374-067fb5f30001?auto=format&fit=crop&w=900&q=80", affiliateUrl: "#configuracion", badge: "-42%", verifiedAt: "Demo", isDemo: true },
-  { id: "demo-3", title: "Freidora de aire compacta de 5 litros", store: "Amazon", category: "Cocina", price: 49.99, oldPrice: 89.99, coupon: "AHORRA5", imageUrl: "https://images.unsplash.com/photo-1585515320310-259814833e62?auto=format&fit=crop&w=900&q=80", affiliateUrl: "#configuracion", badge: "Muy vendido", verifiedAt: "Demo", isDemo: true },
-  { id: "demo-4", title: "Reloj deportivo con GPS y pantalla AMOLED", store: "AliExpress", category: "Tecnología", price: 38.5, oldPrice: 69.95, imageUrl: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=900&q=80", affiliateUrl: "#configuracion", badge: "Flash", verifiedAt: "Demo", isDemo: true },
-  { id: "demo-5", title: "Mochila urbana impermeable para portátil", store: "Amazon", category: "Moda", price: 24.9, oldPrice: 39.9, imageUrl: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?auto=format&fit=crop&w=900&q=80", affiliateUrl: "#configuracion", verifiedAt: "Demo", isDemo: true },
-  { id: "demo-6", title: "Lámpara LED de escritorio regulable", store: "AliExpress", category: "Hogar", price: 16.49, oldPrice: 29.99, coupon: "LUZ3", imageUrl: "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=900&q=80", affiliateUrl: "#configuracion", verifiedAt: "Demo", isDemo: true },
-];
+type LegacyOffer = {
+  message_id?: number;
+  chollometroId?: string;
+  title?: string;
+  text?: string;
+  image?: string;
+  url?: string;
+  price?: string;
+  previousPrice?: string;
+  store?: string;
+  date?: number;
+};
+
+function parsePrice(value?: string) {
+  const normalized = String(value ?? "").replace(/[^\d,.]/g, "").replace(/\.(?=\d{3}(?:\D|$))/g, "").replace(",", ".");
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function cleanTitle(value?: string) {
+  return String(value ?? "")
+    .replace(/^[^\p{L}\p{N}]+/u, "")
+    .replace(/^(OFERT[ÓO]N\s+(AMAZON|ALIEXPRESS)\s*[-–—:]?\s*)/i, "")
+    .replace(/[🔥🚨]+/gu, "")
+    .trim();
+}
+
+function categoryFor(offer: LegacyOffer) {
+  const text = `${offer.title ?? ""} ${offer.text ?? ""}`.toLocaleLowerCase("es");
+  if (/café|capsula|lomo|aliment|cocina|táper/.test(text)) return "Cocina";
+  if (/hogar|vileda|piscina|jardín|mueble|limpieza/.test(text)) return "Hogar";
+  if (/bugaboo|bebé|barba|gillette|moda/.test(text)) return "Moda";
+  return "Tecnología";
+}
+
+function couponFor(text?: string) {
+  return text?.match(/CUP[ÓO]N:\s*([A-Z0-9-]{3,24})/i)?.[1];
+}
+
+const importedDeals: Deal[] = (rawOffers as LegacyOffer[]).flatMap((offer) => {
+  const price = parsePrice(offer.price);
+  const extractedPrevious = offer.text?.match(/(?:PRECIO ANTERIOR|ANTES):\s*([\d.,]+)\s*(?:€|EUR)/i)?.[1];
+  const previous = parsePrice(offer.previousPrice || extractedPrevious);
+  const title = cleanTitle(offer.title);
+  if (!price || !title || !offer.url || !offer.image) return [];
+  const store: Deal["store"] = offer.store === "Amazon" || offer.store === "AliExpress" ? offer.store : "Otra";
+  return [{
+    id: String(offer.chollometroId || offer.message_id || offer.url),
+    title,
+    store,
+    category: categoryFor(offer),
+    price,
+    oldPrice: previous > price ? previous : price,
+    coupon: couponFor(offer.text),
+    imageUrl: offer.image,
+    affiliateUrl: offer.url,
+    badge: previous > price ? "Precio rebajado" : undefined,
+    verifiedAt: offer.date ? new Date(offer.date * 1000).toLocaleDateString("es-ES") : "recientemente",
+  }];
+});
 
 const categories = ["Todos", "Tecnología", "Hogar", "Cocina", "Moda"];
 const money = new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR" });
 
 export function DealExplorer() {
-  const [deals, setDeals] = useState<Deal[]>(demoDeals);
+  const [deals, setDeals] = useState<Deal[]>(importedDeals);
   const [category, setCategory] = useState("Todos");
   const [query, setQuery] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
@@ -46,6 +99,12 @@ export function DealExplorer() {
     const needle = query.trim().toLocaleLowerCase("es");
     return deals.filter((deal) => (category === "Todos" || deal.category === category) && (!needle || deal.title.toLocaleLowerCase("es").includes(needle)));
   }, [deals, category, query]);
+
+  const averageDiscount = useMemo(() => {
+    const discounted = deals.filter((deal) => deal.oldPrice > deal.price);
+    if (!discounted.length) return 0;
+    return Math.round(discounted.reduce((total, deal) => total + (1 - deal.price / deal.oldPrice) * 100, 0) / discounted.length);
+  }, [deals]);
 
   function copyCoupon(code: string) {
     navigator.clipboard?.writeText(code);
@@ -70,7 +129,7 @@ export function DealExplorer() {
           <div className="trust"><span>✓ Selección diaria</span><span>✓ Cupones visibles</span><span>✓ Sin coste para ti</span></div>
         </div>
         <aside className="heroDeal" aria-label="Resumen del ahorro">
-          <span className="stamp">HOY</span><div className="spark">✦</div><p>Ahorro medio en<br/>nuestra selección</p><strong>−43%</strong><small>Actualizado a diario</small>
+          <span className="stamp">HOY</span><div className="spark">✦</div><p>Ahorro medio en<br/>ofertas con rebaja</p><strong>−{averageDiscount}%</strong><small>Calculado con precios publicados</small>
         </aside>
       </section>
 
@@ -86,8 +145,8 @@ export function DealExplorer() {
             {visibleDeals.map((deal) => {
               const discount = Math.round((1 - deal.price / deal.oldPrice) * 100);
               return <article className="dealCard" key={deal.id}>
-                <div className="imageWrap"><img src={deal.imageUrl} alt={deal.title} loading="lazy"/><span className="discount">−{discount}%</span>{deal.badge && <span className="badge">{deal.badge}</span>}</div>
-                <div className="dealBody"><div className="meta"><span className={`store ${deal.store.toLowerCase()}`}>{deal.store}</span><span>{deal.category}</span></div><h3>{deal.title}</h3><div className="pricing"><strong>{money.format(deal.price)}</strong><s>{money.format(deal.oldPrice)}</s><span>Ahorras {money.format(deal.oldPrice - deal.price)}</span></div>
+                <div className="imageWrap"><img src={deal.imageUrl} alt={deal.title} loading="lazy"/>{discount > 0 && <span className="discount">−{discount}%</span>}{deal.badge && <span className="badge">{deal.badge}</span>}</div>
+                <div className="dealBody"><div className="meta"><span className={`store ${deal.store.toLowerCase()}`}>{deal.store}</span><span>{deal.category}</span></div><h3>{deal.title}</h3><div className="pricing"><strong>{money.format(deal.price)}</strong>{discount > 0 && <><s>{money.format(deal.oldPrice)}</s><span>Ahorras {money.format(deal.oldPrice - deal.price)}</span></>}</div>
                   {deal.coupon ? <button className="coupon" onClick={() => copyCoupon(deal.coupon!)}><span>Cupón</span><b>{copied === deal.coupon ? "¡Copiado!" : deal.coupon}</b><i>□</i></button> : <div className="noCoupon">Precio directo, sin cupón</div>}
                   <a className="dealButton" href={deal.affiliateUrl} target={deal.isDemo ? undefined : "_blank"} rel="nofollow sponsored noreferrer">Ver oferta <span>→</span></a>
                   <p className="verified">● {deal.isDemo ? "Oferta de ejemplo" : `Verificado ${deal.verifiedAt}`}</p>
