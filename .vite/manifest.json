@@ -21,7 +21,7 @@
     ]
   },
   "node_modules/vinext/dist/shims/layout-segment-context.js": {
-    "file": "_next/static/chunks/layout-segment-context-pE4L1QUi.js",
+    "file": "_next/static/chunks/layout-segment-context-D8_wIYPl.js",
     "name": "layout-segment-context",
     "src": "node_modules/vinext/dist/shims/layout-segment-context.js",
     "isDynamicEntry": true,
@@ -32,7 +32,7 @@
     ]
   },
   "virtual:vinext-app-browser-entry": {
-    "file": "_next/static/chunks/index-DeCvYlOz.js",
+    "file": "_next/static/chunks/index-20KpsqCe.js",
     "name": "index",
     "src": "virtual:vinext-app-browser-entry",
     "isEntry": true,
